@@ -724,7 +724,7 @@ void ThreatManager::ProcessAIUpdates()
 
     // modifiers by effect school
     ThreatManager const& victimMgr = victim->GetThreatMgr();
-    SpellSchoolMask const mask = schoolMask;
+    SpellSchoolMask const mask = (schoolMask == SPELL_SCHOOL_MASK_NORMAL && spell) ? spell->GetSchoolMask() : schoolMask;
     switch (mask)
     {
         case SPELL_SCHOOL_MASK_NORMAL:
