@@ -360,7 +360,7 @@ void Spell::EffectSchoolDMG(SpellEffIndex effIndex)
                     // Shield Slam
                     if (m_spellInfo->SpellFamilyFlags[1] & 0x200 && m_spellInfo->GetCategory() == 1209)
                     {
-                        uint8 level = unitCaster->GetLevel();
+                        uint8 level = unitCaster->getLevelForTarget(unitTarget);
                         // xinef: shield block should increase the limit
                         float limit = unitCaster->HasAura(2565) ? 2.0f : 1.0f;
                         uint32 block_value = unitCaster->GetShieldBlockValue(uint32(float(level) * 24.5f * limit), uint32(float(level) * 34.5f * limit));
@@ -3332,7 +3332,7 @@ void Spell::EffectTameCreature(SpellEffIndex /*effIndex*/)
     // "kill" original creature
     creatureTarget->DespawnOrUnsummon();
 
-    uint8 level = (creatureTarget->GetLevel() < (unitCaster->GetLevel() - 5)) ? (unitCaster->GetLevel() - 5) : creatureTarget->GetLevel();
+    uint8 level = (creatureTarget->getLevelForTarget(unitCaster) < (unitCaster->getLevelForTarget(creatureTarget) - 5)) ? (unitCaster->getLevelForTarget(creatureTarget) - 5) : creatureTarget->getLevelForTarget(unitCaster);
 
     // prepare visual effect for levelup
     pet->SetUInt32Value(UNIT_FIELD_LEVEL, level - 1);
@@ -5130,7 +5130,7 @@ void Spell::EffectSkinning(SpellEffIndex /*effIndex*/)
         return;
 
     Creature* creature = unitTarget->ToCreature();
-    int32 targetLevel = creature->GetLevel();
+    int32 targetLevel = creature->getLevelForTarget(unitCaster);
 
     uint32 skill = creature->GetCreatureTemplate()->GetRequiredLootSkill();
 
