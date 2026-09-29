@@ -3268,7 +3268,7 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
     if (attType != RANGED_ATTACK &&
             (IsPlayer() || IsPet()) &&
             !victim->IsPlayer() && !victim->IsPet() &&
-            GetLevel() < victim->getLevelForTarget(this))
+            getLevelForTarget(victim) < victim->getLevelForTarget(this))
     {
         // cap possible value (with bonuses > max skill)
         int32 skill = attackerWeaponSkill;
@@ -3509,7 +3509,7 @@ SpellMissInfo Unit::MeleeSpellHitResult(Unit* victim, SpellInfo const* spellInfo
     int32 attackerWeaponSkill;
     // skill value for these spells (for example judgements) is 5* level
     if (spellInfo->DmgClass == SPELL_DAMAGE_CLASS_RANGED && !spellInfo->IsRangedWeaponSpell())
-        attackerWeaponSkill = GetLevel() * 5; // Untrained weapon skill is derived from the attacker's native level.
+        attackerWeaponSkill = getLevelForTarget(victim) * 5;
     // bonus from skills is 0.04% per skill Diff
     else
         attackerWeaponSkill = int32(GetWeaponSkillValue(attType, victim));
@@ -8550,7 +8550,7 @@ float Unit::SpellPctDamageModsDone(Unit* victim, SpellInfo const* spellProto, Da
                 if (victim->HasAuraState(AURA_STATE_FROZEN, spellProto, this))
                 {
                     // Glyph of Ice Lance
-                    if (owner->HasAura(56377) && victim->GetLevel() > owner->GetLevel()) // This aura's threshold compares native owner and victim levels.
+                    if (owner->HasAura(56377) && victim->getLevelForTarget(owner) > owner->getLevelForTarget(victim))
                         DoneTotalMod *= 4.0f;
                     else
                         DoneTotalMod *= 3.0f;
@@ -13548,7 +13548,7 @@ Pet* Unit::CreateTamedPetFrom(Creature* creatureTarget, uint32 spell_id)
         return nullptr;
     }
 
-    uint8 level = creatureTarget->GetLevel() + 5 < GetLevel() ? (GetLevel() - 5) : creatureTarget->GetLevel(); // A tamed pet inherits native creature level, capped relative to the owner's actual level.
+    uint8 level = creatureTarget->getLevelForTarget(this) + 5 < getLevelForTarget(creatureTarget) ? (getLevelForTarget(creatureTarget) - 5) : creatureTarget->getLevelForTarget(this);
 
     if (!InitTamedPet(pet, level, spell_id))
     {

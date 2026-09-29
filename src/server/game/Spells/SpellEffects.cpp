@@ -3332,7 +3332,7 @@ void Spell::EffectTameCreature(SpellEffIndex /*effIndex*/)
     // "kill" original creature
     creatureTarget->DespawnOrUnsummon();
 
-    uint8 level = (creatureTarget->getLevelForTarget(unitCaster) < (unitCaster->getLevelForTarget(creatureTarget) - 5)) ? (unitCaster->getLevelForTarget(creatureTarget) - 5) : creatureTarget->getLevelForTarget(unitCaster);
+    uint8 level = (creatureTarget->getLevelForTarget(unitCaster) + 5 < unitCaster->getLevelForTarget(creatureTarget)) ? (unitCaster->getLevelForTarget(creatureTarget) - 5) : creatureTarget->getLevelForTarget(unitCaster);
 
     // prepare visual effect for levelup
     pet->SetUInt32Value(UNIT_FIELD_LEVEL, level - 1);
