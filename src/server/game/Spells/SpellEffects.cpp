@@ -3887,7 +3887,7 @@ void Spell::EffectThreat(SpellEffIndex /*effIndex*/)
         return;
 
     // SPELL_EFFECT_THREAT adds flat threat that should not be modified by threat reduction
-    unitTarget->GetThreatMgr().AddThreat(unitCaster, float(damage), m_spellInfo, true);
+    unitTarget->AddThreat(unitCaster, float(damage), m_spellInfo->GetSchoolMask(), m_spellInfo, false);
 }
 
 void Spell::EffectHealMaxHealth(SpellEffIndex /*effIndex*/)

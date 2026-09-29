@@ -31,6 +31,7 @@
 #include "CreatureGroups.h"
 #include "MotionMaster.h"
 #include "ObjectAccessor.h"
+#include "ObjectMgr.h"
 #include "Player.h"
 #include "SpellAuraEffects.h"
 #include "SpellInfo.h"
@@ -389,7 +390,7 @@ void ThreatManager::EvaluateSuppressed(bool canExpire)
     }
 }
 
-void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell, bool ignoreModifiers, bool ignoreRedirects)
+void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell, bool ignoreModifiers, bool ignoreRedirects, bool isScaled, SpellSchoolMask schoolMask)
 {
     // step 1: we can shortcut if the spell has one of the NO_THREAT attrs set - nothing will happen
     if (spell)
@@ -403,7 +404,7 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
     // while riding a vehicle, all threat goes to the vehicle, not the pilot
     if (Unit* vehicle = target->GetVehicleBase())
     {
-        AddThreat(vehicle, amount, spell, ignoreModifiers, ignoreRedirects);
+        AddThreat(vehicle, amount, spell, ignoreModifiers, ignoreRedirects, isScaled, schoolMask);
         if (target->HasUnitTypeMask(UNIT_MASK_ACCESSORY)) // accessories are fully treated as components of the parent and cannot have threat
             return;
         amount = 0.0f;
@@ -425,7 +426,10 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
 
     // apply threat modifiers to the amount
     if (!ignoreModifiers)
-        amount = CalculateModifiedThreat(amount, target, spell);
+        amount = CalculateModifiedThreat(amount, target, spell, schoolMask);
+
+    if (amount > 0.0f && !isScaled)
+        amount = sObjectMgr->ScaleDamage(target, _owner, amount);
 
     // if we're increasing threat, send some/all of it to redirection targets instead if applicable
     if (!ignoreRedirects && amount > 0.0f)
@@ -705,7 +709,7 @@ void ThreatManager::ProcessAIUpdates()
     return (a->GetThreat() * aWeight < b->GetThreat());
 }
 
-/*static*/ float ThreatManager::CalculateModifiedThreat(float threat, Unit const* victim, SpellInfo const* spell)
+/*static*/ float ThreatManager::CalculateModifiedThreat(float threat, Unit const* victim, SpellInfo const* spell, SpellSchoolMask schoolMask)
 {
     // modifiers by spell
     if (spell)
@@ -720,7 +724,7 @@ void ThreatManager::ProcessAIUpdates()
 
     // modifiers by effect school
     ThreatManager const& victimMgr = victim->GetThreatMgr();
-    SpellSchoolMask const mask = spell ? spell->GetSchoolMask() : SPELL_SCHOOL_MASK_NORMAL;
+    SpellSchoolMask const mask = schoolMask;
     switch (mask)
     {
         case SPELL_SCHOOL_MASK_NORMAL:

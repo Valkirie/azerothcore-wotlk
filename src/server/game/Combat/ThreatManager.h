@@ -144,7 +144,7 @@ public:
     void EvaluateSuppressed(bool canExpire = false);
 
     ///== AFFECT MY THREAT LIST ==
-    void AddThreat(Unit* target, float amount, SpellInfo const* spell = nullptr, bool ignoreModifiers = false, bool ignoreRedirects = false);
+    void AddThreat(Unit* target, float amount, SpellInfo const* spell = nullptr, bool ignoreModifiers = false, bool ignoreRedirects = false, bool isScaled = true, SpellSchoolMask schoolMask = SPELL_SCHOOL_MASK_NORMAL);
     void ScaleThreat(Unit* target, float factor);
     // Modify target's threat by +percent%
     void ModifyThreatByPercent(Unit* target, int32 percent) { if (percent) ScaleThreat(target, 0.01f * float(100 + percent)); }
@@ -198,7 +198,7 @@ private:
 
     static const CompareThreatLessThan CompareThreat;
     static bool CompareReferencesLT(ThreatReference const* a, ThreatReference const* b, float aWeight);
-    static float CalculateModifiedThreat(float threat, Unit const* victim, SpellInfo const* spell);
+    static float CalculateModifiedThreat(float threat, Unit const* victim, SpellInfo const* spell, SpellSchoolMask schoolMask);
 
     void SendClearAllThreatToClients() const;
     void SendRemoveToClients(Unit const* victim) const;

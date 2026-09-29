@@ -11365,12 +11365,12 @@ bool Unit::CanHaveThreatList(bool skipAliveCheck) const
 
 //======================================================================
 
-void Unit::AddThreat(Unit* victim, float fThreat, SpellSchoolMask /*schoolMask*/, SpellInfo const* threatSpell, bool /*isScaled*/)
+void Unit::AddThreat(Unit* victim, float fThreat, SpellSchoolMask schoolMask, SpellInfo const* threatSpell, bool isScaled)
 {
     // Only mobs can manage threat lists
     if (CanHaveThreatList() && !HasUnitState(UNIT_STATE_EVADE))
     {
-        m_threatManager.AddThreat(victim, fThreat, threatSpell);
+        m_threatManager.AddThreat(victim, fThreat, threatSpell, false, false, isScaled, schoolMask);
     }
 }
 
