@@ -2201,8 +2201,9 @@ void Unit::DealMeleeDamage(CalcDamageInfo* damageInfo, bool durabilityLoss)
         float Probability = 20.0f;
 
         // there is a newbie protection, at level 10 just 7% base chance; assuming linear function
-        if (victim->GetLevel() < 30) // This legacy probability formula is keyed to the victim's native level.
-            Probability = 0.65f * victim->GetLevel() + 0.5f;
+        uint8 victimLevel = victim->getLevelForTarget(this); // Daze protection uses the attacker's target-relative victim level.
+        if (victimLevel < 30)
+            Probability = 0.65f * victimLevel + 0.5f;
 
         uint32 VictimDefense = victim->GetDefenseSkillValue();
         uint32 VictimAuraDefense = -victim->GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_MELEE_CRIT_CHANCE) * 25;
