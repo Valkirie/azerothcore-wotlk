@@ -1963,7 +1963,7 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
         {
             damageInfo->HitInfo     |= HITINFO_GLANCING;
             damageInfo->TargetState  = VICTIMSTATE_HIT;
-    int32 leveldif = int32(victim->GetLevel()) - int32(GetLevel()); // Level-difference combat formulas use native unit levels; relative display levels are not applicable here.
+            int32 leveldif = int32(victim->getLevelForTarget(this)) - int32(getLevelForTarget(victim));
             if (leveldif > 3)
                 leveldif = 3;
             float reducePercent = 1 - leveldif * 0.1f;
@@ -2466,14 +2466,15 @@ float Unit::GetEffectiveResistChance(Unit const* owner, SpellSchoolMask schoolMa
     }
 
     victimResistance = std::max(victimResistance, 0.0f);
-    uint8 effectiveCasterLevel = owner ? owner->GetLevel() : casterLevel; // Resistance calculations use the spell caster's native level.
+    uint8 effectiveCasterLevel = owner ? owner->getLevelForTarget(victim) : casterLevel;
+    uint8 effectiveVictimLevel = owner ? victim->getLevelForTarget(owner) : victim->GetLevel();
 
     if (effectiveCasterLevel && (!spellInfo || !spellInfo->HasAttribute(SPELL_ATTR0_CU_BINARY_SPELL)))
-        victimResistance += std::max(static_cast<float>(victim->GetLevel() - effectiveCasterLevel) * 5.0f, 0.0f);
+        victimResistance += std::max(static_cast<float>(effectiveVictimLevel - effectiveCasterLevel) * 5.0f, 0.0f);
 
     // Per EJ research, the resistance constant is based on the caster's level. It should be equal
     // to 400 for a level 80 caster and 506.5 for a level 83 caster (boss).
-    float level = static_cast<float>(effectiveCasterLevel ? effectiveCasterLevel : victim->GetLevel()); // The resistance constant is defined by caster level, or victim level only without a caster.
+    float level = static_cast<float>(effectiveCasterLevel ? effectiveCasterLevel : effectiveVictimLevel);
     float resistanceConstant = 0.0f;
 
     if (level > 60.0f)
