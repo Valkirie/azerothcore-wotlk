@@ -1963,7 +1963,7 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
         {
             damageInfo->HitInfo     |= HITINFO_GLANCING;
             damageInfo->TargetState  = VICTIMSTATE_HIT;
-            int32 leveldif = int32(victim->GetLevel()) - int32(GetLevel());
+    int32 leveldif = int32(victim->GetLevel()) - int32(GetLevel()); // Level-difference combat formulas use native unit levels; relative display levels are not applicable here.
             if (leveldif > 3)
                 leveldif = 3;
             float reducePercent = 1 - leveldif * 0.1f;
@@ -2201,7 +2201,7 @@ void Unit::DealMeleeDamage(CalcDamageInfo* damageInfo, bool durabilityLoss)
         float Probability = 20.0f;
 
         // there is a newbie protection, at level 10 just 7% base chance; assuming linear function
-        if (victim->GetLevel() < 30)
+        if (victim->GetLevel() < 30) // This legacy probability formula is keyed to the victim's native level.
             Probability = 0.65f * victim->GetLevel() + 0.5f;
 
         uint32 VictimDefense = victim->GetDefenseSkillValue();
@@ -2403,10 +2403,10 @@ uint32 Unit::CalcArmorReducedDamage(Unit const* attacker, Unit const* victim, co
             });
 
             float maxArmorPen = 0;
-            if (victim->GetLevel() < 60)
-                maxArmorPen = float(400 + 85 * victim->GetLevel());
+        if (victim->GetLevel() < 60) // Armor-penetration caps use the victim's native armor formula level.
+            maxArmorPen = float(400 + 85 * victim->GetLevel());
             else
-                maxArmorPen = 400 + 85 * victim->GetLevel() + 4.5f * 85 * (victim->GetLevel() - 59);
+        maxArmorPen = 400 + 85 * victim->GetLevel() + 4.5f * 85 * (victim->GetLevel() - 59); // Armor-penetration caps use the victim's native armor formula level.
 
             // Cap armor penetration to this number
             maxArmorPen = std::min((armor + maxArmorPen) / 3, armor);
@@ -2420,7 +2420,7 @@ uint32 Unit::CalcArmorReducedDamage(Unit const* attacker, Unit const* victim, co
     if (armor < 0.0f)
         armor = 0.0f;
 
-    float levelModifier = attacker ? attacker->GetLevel() : attackerLevel;
+    float levelModifier = attacker ? attacker->GetLevel() : attackerLevel; // Armor mitigation's denominator is based on the attacker's native level.
     if (levelModifier > 59)
         levelModifier = levelModifier + (4.5f * (levelModifier - 59));
 
@@ -2453,14 +2453,14 @@ float Unit::GetEffectiveResistChance(Unit const* owner, SpellSchoolMask schoolMa
     }
 
     victimResistance = std::max(victimResistance, 0.0f);
-    uint8 effectiveCasterLevel = owner ? owner->GetLevel() : casterLevel;
+    uint8 effectiveCasterLevel = owner ? owner->GetLevel() : casterLevel; // Resistance calculations use the spell caster's native level.
 
     if (effectiveCasterLevel && (!spellInfo || !spellInfo->HasAttribute(SPELL_ATTR0_CU_BINARY_SPELL)))
         victimResistance += std::max(static_cast<float>(victim->GetLevel() - effectiveCasterLevel) * 5.0f, 0.0f);
 
     // Per EJ research, the resistance constant is based on the caster's level. It should be equal
     // to 400 for a level 80 caster and 506.5 for a level 83 caster (boss).
-    float level = static_cast<float>(effectiveCasterLevel ? effectiveCasterLevel : victim->GetLevel());
+    float level = static_cast<float>(effectiveCasterLevel ? effectiveCasterLevel : victim->GetLevel()); // The resistance constant is defined by caster level, or victim level only without a caster.
     float resistanceConstant = 0.0f;
 
     if (level > 60.0f)
@@ -3377,7 +3377,7 @@ float Unit::CalculateLevelPenalty(SpellInfo const* spellProto) const
     if (spellProto->SpellLevel < 20)
         LvlPenalty = (20.0f - spellProto->SpellLevel) * 3.75f;
 
-    float LvlFactor = (float(spellProto->SpellLevel) + 6.0f) / float(GetLevel());
+    float LvlFactor = (float(spellProto->SpellLevel) + 6.0f) / float(GetLevel()); // Spell skill scaling uses the casting unit's native level.
     if (LvlFactor > 1.0f)
         LvlFactor = 1.0f;
 
@@ -3491,7 +3491,7 @@ SpellMissInfo Unit::MeleeSpellHitResult(Unit* victim, SpellInfo const* spellInfo
     int32 attackerWeaponSkill;
     // skill value for these spells (for example judgements) is 5* level
     if (spellInfo->DmgClass == SPELL_DAMAGE_CLASS_RANGED && !spellInfo->IsRangedWeaponSpell())
-        attackerWeaponSkill = GetLevel() * 5;
+        attackerWeaponSkill = GetLevel() * 5; // Untrained weapon skill is derived from the attacker's native level.
     // bonus from skills is 0.04% per skill Diff
     else
         attackerWeaponSkill = int32(GetWeaponSkillValue(attType, victim));
@@ -8532,7 +8532,7 @@ float Unit::SpellPctDamageModsDone(Unit* victim, SpellInfo const* spellProto, Da
                 if (victim->HasAuraState(AURA_STATE_FROZEN, spellProto, this))
                 {
                     // Glyph of Ice Lance
-                    if (owner->HasAura(56377) && victim->GetLevel() > owner->GetLevel())
+                    if (owner->HasAura(56377) && victim->GetLevel() > owner->GetLevel()) // This aura's threshold compares native owner and victim levels.
                         DoneTotalMod *= 4.0f;
                     else
                         DoneTotalMod *= 3.0f;
@@ -13530,7 +13530,7 @@ Pet* Unit::CreateTamedPetFrom(Creature* creatureTarget, uint32 spell_id)
         return nullptr;
     }
 
-    uint8 level = creatureTarget->GetLevel() + 5 < GetLevel() ? (GetLevel() - 5) : creatureTarget->GetLevel();
+    uint8 level = creatureTarget->GetLevel() + 5 < GetLevel() ? (GetLevel() - 5) : creatureTarget->GetLevel(); // A tamed pet inherits native creature level, capped relative to the owner's actual level.
 
     if (!InitTamedPet(pet, level, spell_id))
     {
@@ -15825,10 +15825,10 @@ void Unit::RewardRage(uint32 damage, uint32 weaponSpeedHitFactor, bool attacker)
     // Rage formulae https://wowwiki-archive.fandom.com/wiki/Rage#Formulae
     float addRage;
 
-    float rageconversion = ((0.0091107836f * GetLevel() * GetLevel()) + 3.225598133f * GetLevel()) + 4.2652911f;
+    float rageconversion = ((0.0091107836f * GetLevel() * GetLevel()) + 3.225598133f * GetLevel()) + 4.2652911f; // Rage conversion is a player-level progression formula.
 
     // Unknown if correct, but lineary adjust rage conversion above level 70
-    if (GetLevel() > 70)
+    if (GetLevel() > 70) // The post-70 adjustment uses the player's native level.
         rageconversion += 13.27f * (GetLevel() - 70);
 
     if (attacker)

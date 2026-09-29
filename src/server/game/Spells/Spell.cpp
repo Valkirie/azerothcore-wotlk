@@ -2427,7 +2427,7 @@ void Spell::AddUnitTarget(Unit* target, uint32 effectMask, bool checkIfValid /*=
             if (m_auraScaleMask && ihit->effectMask == m_auraScaleMask && m_caster != target)
             {
                 SpellInfo const* auraSpell = m_spellInfo->GetFirstRankSpell();
-                if (uint32(target->GetLevel() + 10) >= auraSpell->SpellLevel)
+                if (uint32(target->GetLevel() + 10) >= auraSpell->SpellLevel) // Aura rank eligibility is based on the target's native level.
                     ihit->scaleAura = true;
             }
 
@@ -2451,7 +2451,7 @@ void Spell::AddUnitTarget(Unit* target, uint32 effectMask, bool checkIfValid /*=
     if (m_auraScaleMask && targetInfo.effectMask == m_auraScaleMask && m_caster != target)
     {
         SpellInfo const* auraSpell = m_spellInfo->GetFirstRankSpell();
-        if (uint32(target->GetLevel() + 10) >= auraSpell->SpellLevel)
+        if (uint32(target->GetLevel() + 10) >= auraSpell->SpellLevel) // Aura rank eligibility is based on the target's native level.
             targetInfo.scaleAura = true;
     }
 
@@ -3226,7 +3226,7 @@ SpellMissInfo Spell::DoSpellHitOnUnit(Unit* unit, uint32 effectMask, bool scaleA
         int32 basePoints[3];
         if (scaleAura)
         {
-            aurSpellInfo = m_spellInfo->GetAuraRankForLevel(unitTarget->GetLevel());
+            aurSpellInfo = m_spellInfo->GetAuraRankForLevel(unitTarget->GetLevel()); // Select the rank from the target's actual progression level.
             ASSERT(aurSpellInfo);
             for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
             {
@@ -6340,7 +6340,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
                     if (!learn_spellproto)
                         return SPELL_FAILED_NOT_KNOWN;
 
-                    if (m_spellInfo->SpellLevel > pet->GetLevel())
+                    if (m_spellInfo->SpellLevel > pet->GetLevel()) // Pet learning checks the pet's persisted level, not a target-relative level.
                         return SPELL_FAILED_LOWLEVEL;
 
                     break;
@@ -6362,7 +6362,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
                         if (!learn_spellproto)
                             return SPELL_FAILED_NOT_KNOWN;
 
-                        if (m_spellInfo->SpellLevel > pet->GetLevel())
+                        if (m_spellInfo->SpellLevel > pet->GetLevel()) // Pet learning checks the pet's persisted level, not a target-relative level.
                             return SPELL_FAILED_LOWLEVEL;
                     }
                     break;
@@ -8350,7 +8350,7 @@ bool Spell::CheckEffectTarget(Unit const* target, uint32 eff) const
                 return false;
             if (unitCaster->ToPlayer()->GetSession()->GetRecruiterId() != target->ToPlayer()->GetSession()->GetAccountId() && target->ToPlayer()->GetSession()->IsARecruiter())
                 return false;
-            if (target->ToPlayer()->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_RECRUIT_A_FRIEND_BONUS_PLAYER_LEVEL))
+            if (target->ToPlayer()->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_RECRUIT_A_FRIEND_BONUS_PLAYER_LEVEL)) // Recruit-a-Friend eligibility uses the player's real progression level.
                 return false;
             break;
         default: // normal case

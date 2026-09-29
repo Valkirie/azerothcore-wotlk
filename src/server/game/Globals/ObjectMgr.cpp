@@ -10451,12 +10451,15 @@ bool ObjectMgr::IsVendorItemValid(uint32 vendor_entry, uint32 item_id, uint32 ma
 // damage, armor, and consumable loot are normalized for the player's progression.
 uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
 {
+    if (!owner || !target)
+        return owner ? owner->GetLevel() : target ? target->GetLevel() : 0; // No target context is available, so preserve the unit's native level.
+
     //We look for owner level relative to the target
     Unit* Realowner = owner->GetCharmerOrOwnerOrSelf(); //GetBeneficiary();
     Unit* Realtarget = target->GetCharmerOrOwnerOrSelf(); //GetBeneficiary();
 
     if (!Realowner || !Realtarget) //If one of them doesn't exist
-        return Realowner ? owner->GetLevel() : Realtarget ? target->GetLevel() : 0;
+        return Realowner ? owner->GetLevel() : Realtarget ? target->GetLevel() : 0; // Missing ownership context: use the native level.
 
     Creature* creature;
     Player* player;
@@ -10479,12 +10482,12 @@ uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
     }
     else if (Realtarget->IsPlayer() && Realowner->IsPlayer()) //PVP case : change nothing
     {
-        return owner->GetLevel();
+        return owner->GetLevel(); // PvP level is not remapped relative to another target.
     }
     else // eVe case : change nothing
-        return owner->GetLevel();
+        return owner->GetLevel(); // Non-creature interactions do not use creature target scaling.
 
-    uint8 level = player->GetLevel();
+    uint8 level = player->GetLevel(); // Scaling is anchored to the player's actual progression level.
 
     if (Realowner->IsCreature())
     {
@@ -10500,7 +10503,7 @@ uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
         if (creature->isWorldBoss())
         {
             if (arealevel < player->GetLevel())
-                level = player->GetLevel();
+                level = player->GetLevel(); // World bosses must not scale below the player's real level.
 
             level += sWorld->getIntConfig(CONFIG_WORLD_BOSS_LEVEL_DIFF);
         }
@@ -10509,7 +10512,7 @@ uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
             if (const ZoneFlex* thisZone = sObjectMgr->GetAreaZoneFlex(AreaID, ZoneID))
             {
                 if (thisZone->IsLowLevel())
-                    return creature->GetLevel();
+                    return creature->GetLevel(); // Low-level zones explicitly opt out of scaling.
 
                 level = std::min(level, (uint8)sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL));
 
@@ -10812,7 +10815,7 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
         creature = owner->ToCreature();
 
         // set level
-        origin_level = creature->GetLevel();
+        origin_level = creature->GetLevel(); // Preserve the creature's native level as the scaling baseline.
         scaled_level = creature->getLevelForTarget(player);
 
         // PvE : Creature is the attacker
@@ -10825,7 +10828,7 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
         creature = target->ToCreature();
 
         // set level
-        origin_level = creature->GetLevel();
+        origin_level = creature->GetLevel(); // Preserve the creature's native level as the scaling baseline.
         scaled_level = creature->getLevelForTarget(player);
 
         // PvE : Player is the attacker
@@ -10838,8 +10841,8 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
         Player* targetPlayer = target->ToPlayer();
 
         // set level
-        origin_level = player->GetLevel();
-        scaled_level = targetPlayer->GetLevel();
+        origin_level = player->GetLevel(); // PvP scaling compares the attacker's real player level.
+        scaled_level = targetPlayer->GetLevel(); // PvP scaling uses the target player's real level.
 
         if (owner->IsHostileTo(target) && !sWorld->getBoolConfig(CONFIG_BOOL_SCALE_PVP_HOSTILE))
             scaled_level = origin_level;
@@ -10879,8 +10882,8 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
 		creature = target->ToCreature();
 
 		// set level (WHY !?)
-		origin_level = target->GetLevel();
-		scaled_level = owner->GetLevel();
+        origin_level = target->GetLevel(); // Pet-vs-creature scaling uses the target creature's native baseline.
+        scaled_level = owner->GetLevel(); // Pet-vs-creature scaling uses the attacker's native pet level.
 
 		// Pv2 : Target is the Pet
 		pAggro |= AGGRO_PVE;
@@ -10908,7 +10911,7 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
         if (isPvE)
         {
             // Calculate the item level modifier as a ratio of the player's actual item level to the expected item level for their current level
-            float itemLevelModifier = (float)player->GetItemLevel() / (float)sObjectMgr->GetPlayerExpectedItemLevel(player->GetLevel());
+            float itemLevelModifier = (float)player->GetItemLevel() / (float)sObjectMgr->GetPlayerExpectedItemLevel(player->GetLevel()); // Expected item level is based on real player progression.
 
             // Clamp the item level modifier between a configured minimum value and 1.0 (no scaling beyond normal level)
             itemLevelModifier = std::clamp(itemLevelModifier, sWorld->getRate(RATE_SCALE_PVE_ITEMLEVEL), 1.0f);

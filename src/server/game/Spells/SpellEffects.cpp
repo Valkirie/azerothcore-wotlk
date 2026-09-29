@@ -663,7 +663,7 @@ void Spell::EffectSchoolDMG(SpellEffIndex effIndex)
                     // Shield of Righteousness
                     if (m_spellInfo->SpellFamilyFlags[EFFECT_1] & 0x100000)
                     {
-                        uint8 level = unitCaster->GetLevel();
+                        uint8 level = unitCaster->GetLevel(); // Shield of Righteousness uses the caster's actual level for its base block value.
                         uint32 block_value = unitCaster->GetShieldBlockValue(uint32(float(level) * 29.5f), uint32(float(level) * 34.5f));
                         if (unitCaster->GetAuraEffect(64882, EFFECT_0))
                             block_value += 225;
