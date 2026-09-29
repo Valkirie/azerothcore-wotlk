@@ -2375,6 +2375,9 @@ uint32 Unit::CalcArmorReducedDamage(Unit const* attacker, Unit const* victim, co
 {
     float armor = float(victim->GetArmor());
 
+    if (attacker)
+        armor = sObjectMgr->ScaleArmor(const_cast<Unit*>(attacker), const_cast<Unit*>(victim), uint32(armor));
+
     // Ignore enemy armor by SPELL_AURA_MOD_TARGET_RESISTANCE aura
     if (attacker)
     {
@@ -2412,10 +2415,11 @@ uint32 Unit::CalcArmorReducedDamage(Unit const* attacker, Unit const* victim, co
             });
 
             float maxArmorPen = 0;
-        if (victim->GetLevel() < 60) // Armor-penetration caps use the victim's native armor formula level.
-            maxArmorPen = float(400 + 85 * victim->GetLevel());
+            uint8 victimLevel = victim->getLevelForTarget(attacker);
+            if (victimLevel < 60)
+                maxArmorPen = float(400 + 85 * victimLevel);
             else
-        maxArmorPen = 400 + 85 * victim->GetLevel() + 4.5f * 85 * (victim->GetLevel() - 59); // Armor-penetration caps use the victim's native armor formula level.
+                maxArmorPen = 400 + 85 * victimLevel + 4.5f * 85 * (victimLevel - 59);
 
             // Cap armor penetration to this number
             maxArmorPen = std::min((armor + maxArmorPen) / 3, armor);
@@ -2429,7 +2433,7 @@ uint32 Unit::CalcArmorReducedDamage(Unit const* attacker, Unit const* victim, co
     if (armor < 0.0f)
         armor = 0.0f;
 
-    float levelModifier = attacker ? attacker->GetLevel() : attackerLevel; // Armor mitigation's denominator is based on the attacker's native level.
+    float levelModifier = attacker ? attacker->getLevelForTarget(victim) : attackerLevel;
     if (levelModifier > 59)
         levelModifier = levelModifier + (4.5f * (levelModifier - 59));
 
