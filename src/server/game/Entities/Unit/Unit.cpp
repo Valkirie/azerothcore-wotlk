@@ -2310,6 +2310,14 @@ void Unit::DealDamageShieldDamage(Unit* victim)
 
         uint32 absorb = 0;
 
+        // Keep packet damage and server-applied damage in the appropriate scaling context:
+        // creature shield owners need scaled packet damage, while player shield owners need scaled applied damage.
+        uint32 altDamage = damage;
+        if (victim->IsCreature())
+            damage = uint32(std::lround(sObjectMgr->ScaleDamage(victim, this, float(damage))));
+        else
+            altDamage = uint32(std::lround(sObjectMgr->ScaleDamage(victim, this, float(damage))));
+
         DamageInfo dmgInfo(victim, this, damage, i_spellProto, i_spellProto->GetSchoolMask(), SPELL_DIRECT_DAMAGE);
         Unit::CalcAbsorbResist(dmgInfo);
         absorb = dmgInfo.GetAbsorb();
@@ -2328,7 +2336,7 @@ void Unit::DealDamageShieldDamage(Unit* victim)
         data << uint32(i_spellProto->GetSchoolMask());
         victim->SendMessageToSet(&data, true);
 
-        Unit::DealDamage(victim, this, damage, 0, SPELL_DIRECT_DAMAGE, i_spellProto->GetSchoolMask(), i_spellProto, true);
+        Unit::DealDamage(victim, this, altDamage, 0, SPELL_DIRECT_DAMAGE, i_spellProto->GetSchoolMask(), i_spellProto, true);
     }
 }
 
@@ -2784,6 +2792,11 @@ void Unit::CalcAbsorbResist(DamageInfo& dmgInfo, bool Splited, uint8 casterLevel
                 dmgInfo.AbsorbDamage(splitDamage);
             else
                 splitSchoolMask = SPELL_SCHOOL_MASK_NATURE;
+
+            float ratio = 1.0f;
+            sObjectMgr->ScaleDamage(dmgInfo.GetAttacker(), caster, 1.0f, ratio);
+            if (ratio != 0.0f)
+                splitDamage = uint32(std::lround(sObjectMgr->ScaleDamage(dmgInfo.GetAttacker(), caster, float(splitDamage) / ratio)));
 
             uint32 splitted = splitDamage;
             uint32 splitted_absorb = 0;
