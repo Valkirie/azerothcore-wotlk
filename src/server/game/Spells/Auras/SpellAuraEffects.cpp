@@ -6788,7 +6788,10 @@ void AuraEffect::HandlePeriodicManaLeechAuraTick(Unit* target, Unit* caster) con
     if (gainAmount)
     {
         gainedAmount = caster->ModifyPower(PowerType, gainAmount);
-        target->AddThreat(caster, float(gainedAmount) * 0.5f, GetSpellInfo()->GetSchoolMask(), GetSpellInfo());
+        float threatAmount = float(gainedAmount) * 0.5f;
+        if (drainAmount > 0)
+            threatAmount *= float(scaledDrainAmount) / float(drainAmount);
+        target->AddThreat(caster, threatAmount, GetSpellInfo()->GetSchoolMask(), GetSpellInfo());
     }
 
     // remove CC auras
