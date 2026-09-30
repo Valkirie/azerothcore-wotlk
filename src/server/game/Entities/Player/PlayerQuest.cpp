@@ -447,7 +447,7 @@ void Player::AddQuestAndCheckCompletion(Quest const* quest, Object* questGiver)
             bool destroyItem = true;
             for (int i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
             {
-                if (quest->RequiredItemId[i] == item->GetEntry() && item->GetTemplate()->MaxCount > 0)
+                if (sObjectMgr->GetItemParentEntry(quest->RequiredItemId[i]) == sObjectMgr->GetItemParentEntry(item->GetEntry()) && item->GetTemplate()->MaxCount > 0)
                 {
                     destroyItem = false;
                     break;
@@ -1465,7 +1465,7 @@ bool Player::TakeQuestSourceItem(uint32 questId, bool msg)
 
             bool destroyItem = true;
             for (uint8 n = 0; n < QUEST_ITEM_OBJECTIVES_COUNT; ++n)
-                if (item->StartQuest == questId && srcItemId == quest->RequiredItemId[n])
+                if (item->StartQuest == questId && sObjectMgr->GetItemParentEntry(srcItemId) == sObjectMgr->GetItemParentEntry(quest->RequiredItemId[n]))
                     destroyItem = false;
 
             if (destroyItem)
@@ -1912,6 +1912,7 @@ void Player::GroupEventHappens(uint32 questId, WorldObject const* pEventObject)
 
 void Player::ItemAddedQuestCheck(uint32 entry, uint32 count)
 {
+    uint32 parentEntry = sObjectMgr->GetItemParentEntry(entry);
     for (uint8 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
     {
         uint32 questid = GetQuestSlotQuestId(i);
@@ -1930,7 +1931,7 @@ void Player::ItemAddedQuestCheck(uint32 entry, uint32 count)
         for (uint8 j = 0; j < QUEST_ITEM_OBJECTIVES_COUNT; ++j)
         {
             uint32 reqitem = qInfo->RequiredItemId[j];
-            if (reqitem == entry)
+            if (sObjectMgr->GetItemParentEntry(reqitem) == parentEntry)
             {
                 uint32 reqitemcount = qInfo->RequiredItemCount[j];
                 uint16 curitemcount = q_status.ItemCount[j];
@@ -1951,6 +1952,7 @@ void Player::ItemAddedQuestCheck(uint32 entry, uint32 count)
 
 void Player::ItemRemovedQuestCheck(uint32 entry, uint32 count)
 {
+    uint32 parentEntry = sObjectMgr->GetItemParentEntry(entry);
     for (uint8 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
     {
         uint32 questid = GetQuestSlotQuestId(i);
@@ -1967,7 +1969,7 @@ void Player::ItemRemovedQuestCheck(uint32 entry, uint32 count)
         for (uint8 j = 0; j < QUEST_ITEM_OBJECTIVES_COUNT; ++j)
         {
             uint32 reqitem = qInfo->RequiredItemId[j];
-            if (reqitem == entry)
+            if (sObjectMgr->GetItemParentEntry(reqitem) == parentEntry)
             {
                 QuestStatusData& q_status = m_QuestStatus[questid];
                 uint32 reqitemcount = qInfo->RequiredItemCount[j];
@@ -2341,6 +2343,7 @@ void Player::ReputationChanged2(FactionEntry const* factionEntry)
 
 bool Player::HasQuestForItem(uint32 itemid, uint32 excludeQuestId /* 0 */, bool turnIn /* false */, bool* showInLoot /*= nullptr*/) const
 {
+    uint32 parentEntry = sObjectMgr->GetItemParentEntry(itemid);
     for (uint8 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
     {
         uint32 questid = GetQuestSlotQuestId(i);
@@ -2372,7 +2375,7 @@ bool Player::HasQuestForItem(uint32 itemid, uint32 excludeQuestId /* 0 */, bool 
             // This part for ReqItem drop
             for (uint8 j = 0; j < QUEST_ITEM_OBJECTIVES_COUNT; ++j)
             {
-                if (itemid == qinfo->RequiredItemId[j] && q_status.ItemCount[j] < qinfo->RequiredItemCount[j])
+                if (parentEntry == sObjectMgr->GetItemParentEntry(qinfo->RequiredItemId[j]) && q_status.ItemCount[j] < qinfo->RequiredItemCount[j])
                 {
                     if (showInLoot)
                     {
@@ -2398,9 +2401,9 @@ bool Player::HasQuestForItem(uint32 itemid, uint32 excludeQuestId /* 0 */, bool 
             for (uint8 j = 0; j < QUEST_SOURCE_ITEM_IDS_COUNT; ++j)
             {
                 // examined item is a source item
-                if (qinfo->ItemDrop[j] == itemid)
+                if (sObjectMgr->GetItemParentEntry(qinfo->ItemDrop[j]) == parentEntry)
                 {
-                    ItemTemplate const* pProto = sObjectMgr->GetItemTemplate(itemid);
+                    ItemTemplate const* pProto = sObjectMgr->GetItemTemplate(qinfo->ItemDrop[j]);
                     uint32 ownedCount = GetItemCount(itemid, true);
                     // 'unique' item
                     if ((pProto->MaxCount && int32(ownedCount) < pProto->MaxCount) || (turnIn && int32(ownedCount) >= pProto->MaxCount))
