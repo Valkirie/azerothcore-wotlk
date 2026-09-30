@@ -60,7 +60,7 @@ void LoadRochenoireSmartLootTable(char const* tableName)
     QueryResult result = WorldDatabase.Query("SELECT `Reference`, `LootInfo` FROM `rochenoire_smart_loot_data` WHERE `table` = '{}'", tableName);
     if (!result)
     {
-        LOG_WARN("server.loading", ">> Loaded 0 smart-loot values for {}. DB table `rochenoire_smart_loot_data` is empty.", tableName);
+        LOG_DEBUG("server.loading", ">> No smart-loot values configured for {}.", tableName);
         return;
     }
 
