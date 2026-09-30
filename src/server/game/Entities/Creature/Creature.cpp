@@ -1684,11 +1684,20 @@ bool Creature::CreateFromProto(ObjectGuid::LowType guidlow, uint32 Entry, uint32
     if (!UpdateEntry(Entry, data))
         return false;
 
-    SetLevelVar(0);
-    if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreature(guidlow))
+    // Determine the creature's target-relative level variation. Spawn-specific
+    // values take precedence over entry-wide values. When no explicit override
+    // exists, preserve the template's native level spread by assigning a stable
+    // symmetric variation for this creature instance. Creatures with a fixed
+    // native level keep the default level_var value of zero.
+    if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreature(GetSpawnId()))
         SetLevelVar(*levelVar);
     else if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreatureTemplate(Entry))
         SetLevelVar(*levelVar);
+    else if (CreatureTemplate const* creatureTemplate = GetCreatureTemplate(); creatureTemplate->maxlevel > creatureTemplate->minlevel)
+    {
+        int32 levelRange = creatureTemplate->maxlevel - creatureTemplate->minlevel;
+        SetLevelVar(int8(irand(-levelRange, levelRange)));
+    }
 
     return true;
 }
