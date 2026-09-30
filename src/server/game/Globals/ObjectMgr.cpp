@@ -10469,23 +10469,23 @@ uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
         //If we want the creature level relative to a player,
         //the player level is returned.
 
-        creature = (Creature*)owner;
-        player = (Player*)target;
+        creature = Realowner->ToCreature();
+        player = Realtarget->ToPlayer();
     }
     else if (Realtarget->IsCreature() && Realowner->IsPlayer())
     {
         //If we want the player level relative to a creature,
         //the player level is still returned.
 
-        player = (Player*)owner;
-        creature = (Creature*)target;
+        player = Realowner->ToPlayer();
+        creature = Realtarget->ToCreature();
     }
     else if (Realtarget->IsPlayer() && Realowner->IsPlayer()) //PVP case : change nothing
     {
-        return owner->GetLevel(); // PvP level is not remapped relative to another target.
+        return Realowner->GetLevel(); // PvP level is not remapped relative to another target.
     }
     else // eVe case : change nothing
-        return owner->GetLevel(); // Non-creature interactions do not use creature target scaling.
+        return Realowner->GetLevel(); // Non-creature interactions do not use creature target scaling.
 
     uint8 level = player->GetLevel(); // Scaling is anchored to the player's actual progression level.
 
