@@ -1026,7 +1026,7 @@ void Unit::DealDamageMods(Unit const* victim, uint32& damage, uint32* absorb)
     }
 }
 
-uint32 Unit::DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage const* cleanDamage, DamageEffectType damagetype, SpellSchoolMask damageSchoolMask, SpellInfo const* spellProto, bool durabilityLoss, bool /*allowGM*/, Spell const* damageSpell /*= nullptr*/)
+uint32 Unit::DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage const* cleanDamage, DamageEffectType damagetype, SpellSchoolMask damageSchoolMask, SpellInfo const* spellProto, bool durabilityLoss, bool /*allowGM*/, Spell const* damageSpell /*= nullptr*/, bool damageAlreadyScaled /*= false*/)
 {
     damage = sScriptMgr->DealDamage(attacker, victim, damage, damagetype);
     // Xinef: initialize damage done for rage calculations
@@ -1148,7 +1148,7 @@ uint32 Unit::DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage
             if (hasSharedDamage && attacker && !attacker->IsFriendlyTo(shareDamageTarget))
                 attacker->AtTargetAttacked(shareDamageTarget, !spellProto || spellProto->HasInitialAggro());
 
-            Unit::DealDamage(attacker, shareDamageTarget, shareDamage, cleanDamage, NODAMAGE, damageSchoolMask, spellProto, false, false, damageSpell);
+        Unit::DealDamage(attacker, shareDamageTarget, shareDamage, cleanDamage, NODAMAGE, damageSchoolMask, spellProto, false, false, damageSpell, true);
         }
     }
 
@@ -1309,7 +1309,7 @@ uint32 Unit::DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage
 
             if (attacker && attacker != victim)
             {
-                victim->AddThreat(attacker, float(damage), damageSchoolMask, spellProto);
+                victim->AddThreat(attacker, float(damage), damageSchoolMask, spellProto, damageAlreadyScaled);
             }
         }
         else                                                // victim is a player
@@ -1723,7 +1723,7 @@ void Unit::DealSpellDamage(SpellNonMeleeDamage* damageInfo, bool durabilityLoss,
 
     // Call default DealDamage
     CleanDamage cleanDamage(damageInfo->cleanDamage, damageInfo->absorb, BASE_ATTACK, MELEE_HIT_NORMAL);
-    Unit::DealDamage(this, victim, damageInfo->damage, &cleanDamage, SPELL_DIRECT_DAMAGE, SpellSchoolMask(damageInfo->schoolMask), spellProto, durabilityLoss, false, spell);
+    Unit::DealDamage(this, victim, damageInfo->damage, &cleanDamage, SPELL_DIRECT_DAMAGE, SpellSchoolMask(damageInfo->schoolMask), spellProto, durabilityLoss, false, spell, true);
 }
 
 // @todo for melee need create structure as in
@@ -2197,7 +2197,7 @@ void Unit::DealMeleeDamage(CalcDamageInfo* damageInfo, bool durabilityLoss)
 
         // Call default DealDamage
         CleanDamage cleanDamage(damageInfo->cleanDamage, damageInfo->damages[i].absorb, damageInfo->attackType, damageInfo->hitOutCome);
-        Unit::DealDamage(this, victim, damageInfo->damages[i].damage, &cleanDamage, DIRECT_DAMAGE, SpellSchoolMask(damageInfo->damages[i].damageSchoolMask), nullptr, durabilityLoss);
+        Unit::DealDamage(this, victim, damageInfo->damages[i].damage, &cleanDamage, DIRECT_DAMAGE, SpellSchoolMask(damageInfo->damages[i].damageSchoolMask), nullptr, durabilityLoss, false, nullptr, true);
     }
 
     // gain rage if attack is fully blocked, dodged or parried
@@ -2361,7 +2361,7 @@ void Unit::DealDamageShieldDamage(Unit* victim)
         data << uint32(i_spellProto->GetSchoolMask());
         victim->SendMessageToSet(&data, true);
 
-        Unit::DealDamage(victim, this, damage, 0, SPELL_DIRECT_DAMAGE, i_spellProto->GetSchoolMask(), i_spellProto, true);
+        Unit::DealDamage(victim, this, damage, 0, SPELL_DIRECT_DAMAGE, i_spellProto->GetSchoolMask(), i_spellProto, true, false, nullptr, true);
     }
 }
 
@@ -2786,7 +2786,7 @@ void Unit::CalcAbsorbResist(DamageInfo& dmgInfo, bool Splited, uint8 casterLevel
             if (splitDamage && attacker && !attacker->IsFriendlyTo(caster))
                 attacker->AtTargetAttacked(caster, !spellInfo || spellInfo->HasInitialAggro());
 
-            Unit::DealDamage(attacker, caster, splitted, &cleanDamage, DIRECT_DAMAGE, schoolMask, splitSpellInfo, false);
+            Unit::DealDamage(attacker, caster, splitted, &cleanDamage, DIRECT_DAMAGE, schoolMask, splitSpellInfo, false, false, nullptr, true);
         }
 
         // We're going to call functions which can modify content of the list during iteration over it's elements
@@ -2869,7 +2869,7 @@ void Unit::CalcAbsorbResist(DamageInfo& dmgInfo, bool Splited, uint8 casterLevel
             if (splitDamage && attacker && !attacker->IsFriendlyTo(caster))
                 attacker->AtTargetAttacked(caster, !spellInfo || spellInfo->HasInitialAggro());
 
-            Unit::DealDamage(attacker, caster, splitted, &cleanDamage, DIRECT_DAMAGE, splitSchoolMask, splitSpellInfo, false);
+            Unit::DealDamage(attacker, caster, splitted, &cleanDamage, DIRECT_DAMAGE, splitSchoolMask, splitSpellInfo, false, false, nullptr, true);
         }
     }
 }
