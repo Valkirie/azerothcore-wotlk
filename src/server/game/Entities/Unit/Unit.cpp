@@ -16624,6 +16624,11 @@ void Unit::BuildValuesUpdate(uint8 updateType, ByteBuffer* data, Player* target)
                 cacheValue.posPointers.UnitFieldFlagsPos = int32(fieldBuffer.wpos());
                 fieldBuffer << m_uint32Values[UNIT_FIELD_FLAGS];
             }
+            else if (index == UNIT_FIELD_LEVEL)
+            {
+                cacheValue.posPointers.UnitFieldLevelPos = int32(fieldBuffer.wpos());
+                fieldBuffer << m_uint32Values[UNIT_FIELD_LEVEL];
+            }
             // use modelid_a if not gm, _h if gm for CREATURE_FLAG_EXTRA_TRIGGER creatures
             else if (index == UNIT_FIELD_DISPLAYID)
             {
@@ -16715,6 +16720,10 @@ void Unit::PatchValuesUpdate(ByteBuffer& valuesUpdateBuf, BuildValuesCachePosPoi
 
         valuesUpdateBuf.put(posPointers.UnitFieldFlagsPos, appendValue);
     }
+
+    // UNIT_FIELD_LEVEL
+    if (creature && posPointers.UnitFieldLevelPos >= 0)
+        valuesUpdateBuf.put(posPointers.UnitFieldLevelPos, uint32(creature->getLevelForTarget(target)));
 
     // UNIT_FIELD_DISPLAYID
     // Use modelid_a if not gm, _h if gm for CREATURE_FLAG_EXTRA_TRIGGER creatures.
