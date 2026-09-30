@@ -272,6 +272,28 @@ public:
         return true;
     }
 
+    static bool HandleNpcSetLevelVarCommand(ChatHandler* handler, int8 levelVar, bool templateEntry)
+    {
+        Creature* creature = handler->getSelectedCreature();
+        if (!creature || creature->IsPet() || !creature->GetSpawnId())
+        {
+            handler->SendErrorMessage(LANG_SELECT_CREATURE);
+            return false;
+        }
+
+        if (templateEntry)
+        {
+            WorldDatabase.Execute("REPLACE INTO rochenoire_scale_level_creature_template (entry, flvar) VALUES ({}, {})", creature->GetEntry(), levelVar);
+        }
+        else
+        {
+            WorldDatabase.Execute("REPLACE INTO rochenoire_scale_level_creature (guid, flvar) VALUES ({}, {})", creature->GetSpawnId(), levelVar);
+        }
+
+        creature->SetLevelVar(levelVar);
+        return true;
+    }
+
     static bool HandleNpcLoadCommand(ChatHandler* handler, CreatureSpawnId spawnId)
     {
         if (!spawnId)
