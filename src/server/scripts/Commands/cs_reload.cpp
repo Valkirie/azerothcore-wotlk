@@ -22,6 +22,7 @@
 #include "BattlegroundMgr.h"
 #include "Chat.h"
 #include "CommandScript.h"
+#include "Creature.h"
 #include "CreatureTextMgr.h"
 #include "DisableMgr.h"
 #include "GameGraveyard.h"
@@ -1333,6 +1334,12 @@ public:
     {
         sObjectMgr->LoadLevelScaleCreature();
         sObjectMgr->LoadLevelScaleCreatureTemplate();
+        sMapMgr->DoForAllMaps([](Map* map)
+        {
+            for (auto const& [spawnId, creature] : map->GetCreatureBySpawnIdStore())
+                if (creature)
+                    creature->RefreshLevelVariation();
+        });
         handler->SendGlobalGMSysMessage("Rochenoire creature level scaling reloaded.");
         return true;
     }

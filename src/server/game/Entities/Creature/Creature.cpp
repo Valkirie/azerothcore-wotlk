@@ -1573,6 +1573,14 @@ void Creature::SelectLevel(bool changelevel)
     sScriptMgr->OnCreatureSelectLevel(cInfo, this);
 }
 
+void Creature::RefreshLevelVariation()
+{
+    if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreature(GetSpawnId()))
+        SetLevelVar(*levelVar);
+    else if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreatureTemplate(GetEntry()))
+        SetLevelVar(*levelVar);
+}
+
 float Creature::_GetHealthMod(int32 Rank)
 {
     switch (Rank)                                           // define rates for each elite rank
