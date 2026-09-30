@@ -2945,15 +2945,15 @@ void Spell::DoAllEffectOnTarget(TargetInfo* target)
                     }
                 }
 
-                // Send log damage message to client
+                procVictim |= PROC_FLAG_TAKEN_DAMAGE;
+
+                caster->DealSpellDamage(&damageInfo, true, this);
+
+                // Send the authoritative target-relative result after damage scaling.
                 caster->SendSpellNonMeleeDamageLog(&damageInfo);
                 // Xinef: send info to target about reflect
                 if (reflectedSpell)
                     effectUnit->SendSpellNonMeleeReflectLog(&damageInfo, effectUnit);
-
-                procVictim |= PROC_FLAG_TAKEN_DAMAGE;
-
-                caster->DealSpellDamage(&damageInfo, true, this);
 
                 // do procs after damage, eg healing effects
                 // no need to check if target is alive, done in procdamageandspell

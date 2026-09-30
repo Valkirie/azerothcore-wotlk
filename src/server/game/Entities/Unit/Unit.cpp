@@ -2987,6 +2987,9 @@ void Unit::AttackerStateUpdate(Unit* victim, WeaponAttackType attType /*= BASE_A
             Unit::DealDamageMods(victim, damageInfo.damages[i].damage, &damageInfo.damages[i].absorb);
         }
 
+        // Prepare the target-relative values before serializing the combat result.
+        SetDamageInfoForTarget(&damageInfo);
+
         // Related to sparring system. Allow attack animations even if there are no damages
         if (victim->CanSparringWith(damageInfo.attacker))
             damageInfo.HitInfo |= HITINFO_FAKE_DAMAGE;
