@@ -1684,6 +1684,12 @@ bool Creature::CreateFromProto(ObjectGuid::LowType guidlow, uint32 Entry, uint32
     if (!UpdateEntry(Entry, data))
         return false;
 
+    SetLevelVar(0);
+    if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreature(guidlow))
+        SetLevelVar(*levelVar);
+    else if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreatureTemplate(Entry))
+        SetLevelVar(*levelVar);
+
     return true;
 }
 

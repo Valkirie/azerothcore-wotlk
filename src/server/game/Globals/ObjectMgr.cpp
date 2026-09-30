@@ -10714,6 +10714,18 @@ void ObjectMgr::LoadLevelScaleCreatureTemplate()
     LOG_INFO("server.loading", " ");
 }
 
+int8 const* ObjectMgr::GetLevelScaleCreatureTemplate(uint32 entry) const
+{
+    CreatureForceLevelVar::const_iterator itr = mCreatureForcedLevelVarMapTemplate.find(entry);
+    return itr != mCreatureForcedLevelVarMapTemplate.end() ? &itr->second : nullptr;
+}
+
+int8 const* ObjectMgr::GetLevelScaleCreature(uint32 guid) const
+{
+    CreatureForceLevelVar::const_iterator itr = mCreatureForcedLevelVarMap.find(guid);
+    return itr != mCreatureForcedLevelVarMap.end() ? &itr->second : nullptr;
+}
+
 
 // Scale creature armor to the effective level of the player in PvE combat.
 uint32 ObjectMgr::ScaleArmor(Unit* owner, Unit* target, uint32 oldarmor) const
