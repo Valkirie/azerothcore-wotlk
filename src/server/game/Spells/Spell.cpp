@@ -3005,7 +3005,9 @@ void Spell::DoAllEffectOnTarget(TargetInfo* target)
     else if (m_healing > 0 && unitTarget && unitTarget->IsAlive())
     {
         // pure gameobject cast without an owner: heal anyway, mirroring the damage case below
-        m_healing = Unit::DealHeal(nullptr, unitTarget, uint32(m_healing));
+        HealInfo healInfo(nullptr, unitTarget, uint32(m_healing), m_spellInfo, m_spellInfo->GetSchoolMask());
+        Unit::CalcHealAbsorb(healInfo);
+        m_healing = Unit::DealHeal(nullptr, unitTarget, healInfo.GetHeal());
     }
     else if (m_damage > 0 && unitTarget && unitTarget->IsAlive())
     {
