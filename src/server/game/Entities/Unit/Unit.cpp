@@ -2978,7 +2978,7 @@ void Unit::AttackerStateUpdate(Unit* victim, WeaponAttackType attType /*= BASE_A
     {
         // attack can be redirected to another target
         victim = GetMeleeHitRedirectTarget(victim);
-        CalcDamageInfo damageInfo;
+        CalcDamageInfo damageInfo{};
         CalculateMeleeDamage(victim, &damageInfo, attType, sittingVictim);
 
         // Send log damage message to client
