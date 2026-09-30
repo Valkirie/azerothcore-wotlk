@@ -6836,6 +6836,11 @@ void AuraEffect::HandleObsModPowerAuraTick(Unit* target, Unit* caster) const
 
     // ignore negative values (can be result apply spellmods to aura damage
     uint32 amount = std::max(m_amount, 0) * target->GetMaxPower(PowerType) / 100;
+    if (caster)
+    {
+        float ratio = 1.0f;
+        amount = uint32(std::lround(sObjectMgr->ScaleDamage(caster, target, float(amount), ratio, SPELLTYPE_POWER)));
+    }
     LOG_DEBUG("spells.aura.effect", "PeriodicTick: {} energize {} for {} dmg inflicted by {}",
                     GetCasterGUID().ToString(), target->GetGUID().ToString(), amount, GetId());
     SpellPeriodicAuraLogInfo pInfo(this, amount, 0, 0, 0, 0.0f, false);
@@ -6869,6 +6874,11 @@ void AuraEffect::HandlePeriodicEnergizeAuraTick(Unit* target, Unit* caster) cons
 
     // ignore negative values (can be result apply spellmods to aura damage
     int32 amount = std::max(m_amount, 0);
+    if (caster)
+    {
+        float ratio = 1.0f;
+        amount = int32(std::lround(sObjectMgr->ScaleDamage(caster, target, float(amount), ratio, SPELLTYPE_POWER)));
+    }
 
     SpellPeriodicAuraLogInfo pInfo(this, amount, 0, 0, 0, 0.0f, false);
     target->SendPeriodicAuraLog(&pInfo);
