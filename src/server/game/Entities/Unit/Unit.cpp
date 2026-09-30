@@ -12196,6 +12196,36 @@ void Unit::SetHealth(uint32 val)
     }
 }
 
+uint32 Unit::GetHealthForTarget(Unit const* target) const
+{
+    uint32 health = GetHealth();
+
+    if (!target || target == this || !IsCreature() || !target->IsPlayer())
+        return health;
+
+    Creature const* creature = ToCreature();
+    uint8 scaledLevel = creature->getLevelForTarget(target);
+    if (!GetLevel() || !scaledLevel || GetLevel() == scaledLevel)
+        return health;
+
+    return uint32(std::min<double>(double(health) * sObjectMgr->RatioModHealth(GetLevel(), scaledLevel), std::numeric_limits<uint32>::max()));
+}
+
+uint32 Unit::GetMaxHealthForTarget(Unit const* target) const
+{
+    uint32 maxHealth = GetMaxHealth();
+
+    if (!target || target == this || !IsCreature() || !target->IsPlayer())
+        return maxHealth;
+
+    Creature const* creature = ToCreature();
+    uint8 scaledLevel = creature->getLevelForTarget(target);
+    if (!GetLevel() || !scaledLevel || GetLevel() == scaledLevel)
+        return maxHealth;
+
+    return uint32(std::min<double>(double(maxHealth) * sObjectMgr->RatioModHealth(GetLevel(), scaledLevel), std::numeric_limits<uint32>::max()));
+}
+
 void Unit::SetMaxHealth(uint32 val)
 {
     if (!val)
@@ -16652,6 +16682,16 @@ void Unit::BuildValuesUpdate(uint8 updateType, ByteBuffer* data, Player* target)
                 cacheValue.posPointers.UnitFieldFlagsPos = int32(fieldBuffer.wpos());
                 fieldBuffer << m_uint32Values[UNIT_FIELD_FLAGS];
             }
+            else if (index == UNIT_FIELD_HEALTH)
+            {
+                cacheValue.posPointers.UnitFieldHealthPos = int32(fieldBuffer.wpos());
+                fieldBuffer << m_uint32Values[UNIT_FIELD_HEALTH];
+            }
+            else if (index == UNIT_FIELD_MAXHEALTH)
+            {
+                cacheValue.posPointers.UnitFieldMaxHealthPos = int32(fieldBuffer.wpos());
+                fieldBuffer << m_uint32Values[UNIT_FIELD_MAXHEALTH];
+            }
             else if (index == UNIT_FIELD_LEVEL)
             {
                 cacheValue.posPointers.UnitFieldLevelPos = int32(fieldBuffer.wpos());
@@ -16752,6 +16792,16 @@ void Unit::PatchValuesUpdate(ByteBuffer& valuesUpdateBuf, BuildValuesCachePosPoi
     // UNIT_FIELD_LEVEL
     if (creature && posPointers.UnitFieldLevelPos >= 0)
         valuesUpdateBuf.put(posPointers.UnitFieldLevelPos, uint32(creature->getLevelForTarget(target)));
+
+    // UNIT_FIELD_HEALTH and UNIT_FIELD_MAXHEALTH
+    if (creature && (posPointers.UnitFieldHealthPos >= 0 || posPointers.UnitFieldMaxHealthPos >= 0))
+    {
+        if (posPointers.UnitFieldHealthPos >= 0)
+            valuesUpdateBuf.put(posPointers.UnitFieldHealthPos, GetHealthForTarget(target));
+
+        if (posPointers.UnitFieldMaxHealthPos >= 0)
+            valuesUpdateBuf.put(posPointers.UnitFieldMaxHealthPos, GetMaxHealthForTarget(target));
+    }
 
     // UNIT_FIELD_DISPLAYID
     // Use modelid_a if not gm, _h if gm for CREATURE_FLAG_EXTRA_TRIGGER creatures.
