@@ -766,8 +766,9 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     uint32 XP = rewarded ? 0 : CalculateQuestRewardXP(quest);
 
     sScriptMgr->OnPlayerQuestComputeXP(this, quest, XP);
+    bool const rewardWithMoney = GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(this);
     int32 moneyRew = 0;
-    if (GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(this))
+    if (rewardWithMoney)
     {
         moneyRew = quest->GetRewMoneyMaxLevel();
     }
@@ -853,7 +854,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     SetRewardedQuest(quest_id);
 
     if (announce)
-        SendQuestReward(quest, XP);
+        SendQuestReward(quest, XP, rewardWithMoney);
 
     // cast spells after mark quest complete (some spells have quest completed state requirements in spell_area data)
     if (quest->GetRewSpellCast() > 0)
@@ -2435,7 +2436,7 @@ void Player::SendQuestComplete(uint32 quest_id)
     LOG_DEBUG("network", "WORLD: Sent SMSG_QUESTUPDATE_COMPLETE quest = {}", quest_id);
 }
 
-void Player::SendQuestReward(Quest const* quest, uint32 XP)
+void Player::SendQuestReward(Quest const* quest, uint32 XP, bool rewardWithMoney)
 {
     uint32 questid = quest->GetQuestId();
     LOG_DEBUG("network", "WORLD: Sent SMSG_QUESTGIVER_QUEST_COMPLETE quest = {}", questid);
@@ -2444,7 +2445,7 @@ void Player::SendQuestReward(Quest const* quest, uint32 XP)
     questGiverQuestComplete.QuestId = questid;
     uint32 rewardMoney = quest->GetRewOrReqMoney(GetLevel());
 
-    if (!IsMaxLevel())
+    if (!rewardWithMoney)
         questGiverQuestComplete.Experience = XP;
     else
         rewardMoney += quest->GetRewMoneyMaxLevel();

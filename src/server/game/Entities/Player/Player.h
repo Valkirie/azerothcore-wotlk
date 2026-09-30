@@ -1561,7 +1561,7 @@ public:
     [[nodiscard]] bool CanShareQuest(uint32 quest_id) const;
 
     void SendQuestComplete(uint32 quest_id);
-    void SendQuestReward(Quest const* quest, uint32 XP);
+    void SendQuestReward(Quest const* quest, uint32 XP, bool rewardWithMoney);
     void SendQuestFailed(uint32 questId, InventoryResult reason = EQUIP_ERR_OK);
     void SendQuestTimerFailed(uint32 quest_id);
     void SendCanTakeQuestResponse(QuestFailedReason msg) const;
