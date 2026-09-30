@@ -243,7 +243,6 @@ public:
 
     static uint32 LoadScaledLoot(uint32 itemId, Player* player, uint32 forcedLevel = 0);
     static uint32 LoadScaledLoot(uint32 itemId, uint32 playerLevel, Player* player = nullptr);
-    static uint32 LoadScaledParent(uint32 itemId);
 protected:
     uint32 LoadLootTable();
     void Clear();

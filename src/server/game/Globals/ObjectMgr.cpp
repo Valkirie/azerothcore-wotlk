@@ -11227,7 +11227,7 @@ void ObjectMgr::LoadLootConsumableScale()
     LOG_INFO("server.loading", " ");
 }
 
-uint32 ObjectMgr::GetItemParentEntry(uint32 ItemId)
+uint32 ObjectMgr::GetItemParentEntry(uint32 ItemId) const
 {
     if (ItemId < MIN_ENTRY_SCALE)
     {

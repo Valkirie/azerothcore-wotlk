@@ -1343,6 +1343,8 @@ public:
     [[nodiscard]] ItemLocale const* GetItemLocale(uint32 entry) const
     {
         ItemLocaleContainer::const_iterator itr = _itemLocaleStore.find(entry);
+        if (itr == _itemLocaleStore.end())
+            itr = _itemLocaleStore.find(GetItemParentEntry(entry));
         if (itr == _itemLocaleStore.end()) return nullptr;
         return &itr->second;
     }
@@ -1812,7 +1814,7 @@ public:
     void LoadLootConsumableScale();
     void LoadItemsNotScaledFromVendors();
     // Converts a scaled loot item entry back to its base item entry.
-    uint32 GetItemParentEntry(uint32 itemId);
+    uint32 GetItemParentEntry(uint32 itemId) const;
     // Returns the level-appropriate replacement for a consumable loot item.
     uint32 const GetItemLootScale(uint32 entry, uint8 playerLevel) const;
     // Returns whether an item is exempt from vendor loot scaling.

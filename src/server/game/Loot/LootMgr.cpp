@@ -75,15 +75,6 @@ void LoadRochenoireSmartLootTable(char const* tableName)
     LOG_INFO("server.loading", ">> Loaded {} smart-loot values for {} in {} ms", count, tableName, GetMSTimeDiffToNow(oldMSTime));
 }
 
-uint32 LootStore::LoadScaledParent(uint32 itemId)
-{
-    if (itemId < MIN_ENTRY_SCALE)
-        return itemId;
-
-    uint32 parentId = (itemId - MIN_ENTRY_SCALE - 1) / MAX_REQUIREDLEVEL;
-    return sObjectMgr->GetItemTemplate(parentId) ? parentId : itemId;
-}
-
 uint32 LootStore::LoadScaledLoot(uint32 itemId, Player* player, uint32 forcedLevel)
 {
     uint32 level = forcedLevel ? forcedLevel : (player ? player->getAreaZoneLevel() : 0);
