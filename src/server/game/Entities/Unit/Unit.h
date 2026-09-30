@@ -530,6 +530,7 @@ struct CalcDamageInfo
     } alt_damages[MAX_ITEM_PROTO_DAMAGES];
     float ratio;
     bool scaled;
+    bool scaledBeforeAbsorb;
     bool isValuesForTarget;
 
     uint32 GetTargetDamage(uint8 index) const { return scaled ? (isValuesForTarget ? damages[index].damage : alt_damages[index].damage) : damages[index].damage; }
@@ -544,7 +545,7 @@ struct SpellNonMeleeDamage
     SpellNonMeleeDamage(Unit* _attacker, Unit* _target, SpellInfo const* _spellInfo, uint32 _schoolMask)
         : target(_target), attacker(_attacker), spellInfo(_spellInfo), damage(0), overkill(0), schoolMask(_schoolMask),
           absorb(0), resist(0), physicalLog(false), unused(false), blocked(0), HitInfo(0), cleanDamage(0),
-           alt_damage(0), alt_absorb(0), alt_resist(0), alt_blocked(0), ratio(1.0f), scaled(false), isValuesForTarget(false)
+           alt_damage(0), alt_absorb(0), alt_resist(0), alt_blocked(0), ratio(1.0f), scaled(false), scaledBeforeAbsorb(false), isValuesForTarget(false)
     {}
 
     Unit* target;
@@ -567,6 +568,7 @@ struct SpellNonMeleeDamage
     uint32 alt_blocked;
     float ratio;
     bool scaled;
+    bool scaledBeforeAbsorb;
     bool isValuesForTarget;
 };
 

@@ -1561,6 +1561,14 @@ void Unit::CalculateSpellDamageTaken(SpellNonMeleeDamage* damageInfo, int32 dama
         victim->GetAI()->OnCalculateSpellDamageReceived(damage, this);
     }
 
+    SetRatioInSpellNonMeleeDamageForTarget(damageInfo);
+    if (damageInfo->scaled && !damageInfo->scaledBeforeAbsorb)
+    {
+        damageInfo->alt_damage = uint32(damage);
+        damage = int32(std::lround(sObjectMgr->ScaleDamage(damageInfo->attacker,
+            damageInfo->target, float(damage), damageInfo->ratio)));
+    }
+
     int32 cleanDamage = 0;
     if (!spellInfo->HasAttribute(SPELL_ATTR4_IGNORE_DAMAGE_TAKEN_MODIFIERS) && Unit::IsDamageReducedByArmor(damageSchoolMask, spellInfo))
     {
@@ -1676,6 +1684,9 @@ void Unit::CalculateSpellDamageTaken(SpellNonMeleeDamage* damageInfo, int32 dama
 
     damageInfo->cleanDamage = std::max(0, cleanDamage);
     damageInfo->damage = std::max(0, damage);
+    damageInfo->scaledBeforeAbsorb = damageInfo->scaled;
+    if (damageInfo->scaled)
+        damageInfo->isValuesForTarget = true;
 
     // Calculate absorb resist
     if (damageInfo->damage > 0)
@@ -1821,6 +1832,14 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
         if (victim->GetAI())
         {
             victim->GetAI()->OnCalculateMeleeDamageReceived(damage, this);
+        }
+
+        SetRatioInCalcDamageInfoForTarget(damageInfo);
+        if (damageInfo->scaled && !damageInfo->scaledBeforeAbsorb)
+        {
+            damageInfo->alt_damages[i].damage = damage;
+            damage = uint32(std::lround(sObjectMgr->ScaleDamage(damageInfo->attacker,
+                damageInfo->target, float(damage), damageInfo->ratio)));
         }
 
         // Calculate armor reduction
@@ -2019,7 +2038,7 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
         {
             damageInfo->procVictim |= PROC_FLAG_TAKEN_DAMAGE;
 
-            // Calculate absorb & resists
+        // Calculate absorb & resists
             DamageInfo dmgInfo(*damageInfo, i);
             Unit::CalcAbsorbResist(dmgInfo);
             damageInfo->damages[i].absorb = dmgInfo.GetAbsorb();
@@ -2038,6 +2057,10 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
             damageInfo->damages[i].damage = dmgInfo.GetDamage();
         }
     }
+
+    damageInfo->scaledBeforeAbsorb = damageInfo->scaled;
+    if (damageInfo->scaled)
+        damageInfo->isValuesForTarget = true;
 
     // set proper HitInfo flags
     if ((tmpHitInfo[0] & HITINFO_FULL_ABSORB) != 0)
@@ -2073,7 +2096,7 @@ void Unit::SetRatioInCalcDamageInfoForTarget(CalcDamageInfo* damageInfo)
 
 void Unit::ComputeScaledDamageInfo(CalcDamageInfo* damageInfo)
 {
-    if (!damageInfo || !damageInfo->scaled || damageInfo->isValuesForTarget)
+    if (!damageInfo || !damageInfo->scaled || damageInfo->scaledBeforeAbsorb || damageInfo->isValuesForTarget)
         return;
 
     for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
@@ -2086,6 +2109,9 @@ void Unit::SetDamageInfoForTarget(CalcDamageInfo* damageInfo)
         return;
 
     SetRatioInCalcDamageInfoForTarget(damageInfo);
+    if (damageInfo->scaledBeforeAbsorb)
+        return;
+
     ComputeScaledDamageInfo(damageInfo);
     if (damageInfo->scaled && !damageInfo->isValuesForTarget)
     {
@@ -2097,7 +2123,7 @@ void Unit::SetDamageInfoForTarget(CalcDamageInfo* damageInfo)
 
 void Unit::FormatDamageInfoForPacketSender(CalcDamageInfo* damageInfo)
 {
-    if (!damageInfo || !damageInfo->scaled)
+    if (!damageInfo || !damageInfo->scaled || damageInfo->scaledBeforeAbsorb)
         return;
 
     for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
@@ -2243,7 +2269,7 @@ void Unit::SetRatioInSpellNonMeleeDamageForTarget(SpellNonMeleeDamage* damageInf
 
 void Unit::ComputeScaledSpellNonMeleeDamage(SpellNonMeleeDamage* damageInfo)
 {
-    if (!damageInfo || !damageInfo->scaled || damageInfo->isValuesForTarget)
+    if (!damageInfo || !damageInfo->scaled || damageInfo->scaledBeforeAbsorb || damageInfo->isValuesForTarget)
         return;
 
     damageInfo->alt_damage = uint32(std::lround(sObjectMgr->ScaleDamage(damageInfo->attacker, damageInfo->target, float(damageInfo->damage), damageInfo->ratio)));
@@ -2258,6 +2284,9 @@ void Unit::SetSpellNonMeleeDamageForTarget(SpellNonMeleeDamage* damageInfo)
         return;
 
     SetRatioInSpellNonMeleeDamageForTarget(damageInfo);
+    if (damageInfo->scaledBeforeAbsorb)
+        return;
+
     ComputeScaledSpellNonMeleeDamage(damageInfo);
     if (damageInfo->scaled && !damageInfo->isValuesForTarget)
         SwitchDataForSpellNonMeleeDamage(damageInfo);
@@ -2274,7 +2303,7 @@ void Unit::SwitchDataForSpellNonMeleeDamage(SpellNonMeleeDamage* damageInfo)
 
 void Unit::FormatSpellNonMeleeDamageForPacketSender(SpellNonMeleeDamage* damageInfo, bool /*forAttacker*/)
 {
-    if (damageInfo && damageInfo->scaled)
+    if (damageInfo && damageInfo->scaled && !damageInfo->scaledBeforeAbsorb)
         SwitchDataForSpellNonMeleeDamage(damageInfo);
 }
 
@@ -2310,13 +2339,9 @@ void Unit::DealDamageShieldDamage(Unit* victim)
 
         uint32 absorb = 0;
 
-        // Keep packet damage and server-applied damage in the appropriate scaling context:
-        // creature shield owners need scaled packet damage, while player shield owners need scaled applied damage.
-        uint32 altDamage = damage;
-        if (victim->IsCreature())
-            damage = uint32(std::lround(sObjectMgr->ScaleDamage(victim, this, float(damage))));
-        else
-            altDamage = uint32(std::lround(sObjectMgr->ScaleDamage(victim, this, float(damage))));
+        // Scale before absorb effects consume the reflected damage so the packet,
+        // shield depletion, mana cost, and health loss use the same value.
+        damage = uint32(std::lround(sObjectMgr->ScaleDamage(victim, this, float(damage))));
 
         DamageInfo dmgInfo(victim, this, damage, i_spellProto, i_spellProto->GetSchoolMask(), SPELL_DIRECT_DAMAGE);
         Unit::CalcAbsorbResist(dmgInfo);
@@ -2336,7 +2361,7 @@ void Unit::DealDamageShieldDamage(Unit* victim)
         data << uint32(i_spellProto->GetSchoolMask());
         victim->SendMessageToSet(&data, true);
 
-        Unit::DealDamage(victim, this, altDamage, 0, SPELL_DIRECT_DAMAGE, i_spellProto->GetSchoolMask(), i_spellProto, true);
+        Unit::DealDamage(victim, this, damage, 0, SPELL_DIRECT_DAMAGE, i_spellProto->GetSchoolMask(), i_spellProto, true);
     }
 }
 
