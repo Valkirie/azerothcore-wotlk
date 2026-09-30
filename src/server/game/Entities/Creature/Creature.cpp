@@ -18,6 +18,7 @@
 #include "Creature.h"
 #include "BattlegroundMgr.h"
 #include "CellImpl.h"
+#include "ObjectMgr.h"
 #include "Common.h"
 #include "CreatureAI.h"
 #include "CreatureAISelector.h"
@@ -3207,8 +3208,11 @@ void Creature::AllLootRemovedFromCorpse()
 
 uint8 Creature::getLevelForTarget(WorldObject const* target) const
 {
-    if (!isWorldBoss() || !target->ToUnit())
-        return Unit::getLevelForTarget(target);
+    if (!target->ToUnit())
+        return GetLevel();
+
+    if (!isWorldBoss())
+        return sObjectMgr->GetLevelScaled(const_cast<Creature*>(this), const_cast<Unit*>(target->ToUnit()));
 
     uint16 level = target->ToUnit()->GetLevel() + sWorld->getIntConfig(CONFIG_WORLD_BOSS_LEVEL_DIFF);
     if (level < 1)
