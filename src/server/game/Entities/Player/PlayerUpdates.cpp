@@ -20,6 +20,7 @@
 #include "CellImpl.h"
 #include "Channel.h"
 #include "ChannelMgr.h"
+#include "Chat.h"
 #include "Formulas.h"
 #include "GameTime.h"
 #include "GridNotifiers.h"
@@ -1314,6 +1315,13 @@ void Player::UpdateZone(uint32 newZone, uint32 newArea, bool force)
     AreaTableEntry const* zone = sAreaTableStore.LookupEntry(newZone);
     if (!zone)
         return;
+
+    if (m_zoneUpdateId != newZone)
+    {
+        if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(newArea, newZone))
+            if (!zoneFlex->IsLowLevel())
+                ChatHandler(GetSession()).PSendSysMessage(LANG_ZONE_LEVEL_SCALING_RANGE, zoneFlex->LevelRangeMin, zoneFlex->LevelRangeMax);
+    }
 
     if (sWorld->getBoolConfig(CONFIG_WEATHER))
         if (!GetMap()->GetOrGenerateZoneDefaultWeather(newZone))

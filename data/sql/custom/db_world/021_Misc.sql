@@ -9,5 +9,6 @@ REPLACE INTO `acore_string` (`entry`, `content_default`, `locale_frFR`) VALUES (
 REPLACE INTO `acore_string` (`entry`, `content_default`, `locale_frFR`) VALUES (21022,"Note from your Regent", "Une note de votre régent");
 
 -- Npc info command extra details
-REPLACE INTO `acore_string` (`entry`, `content_default`) VALUES (21030,"Level (scaled): %u.");
-REPLACE INTO `acore_string` (`entry`, `content_default`) VALUES (21031,"Level (variation): %d.");
+REPLACE INTO `acore_string` (`entry`, `content_default`) VALUES (21030,"Level (scaled): {}.");
+REPLACE INTO `acore_string` (`entry`, `content_default`) VALUES (21031,"Level (variation): {}.");
+REPLACE INTO `acore_string` (`entry`, `content_default`) VALUES (21032,"Zone level scaling range: {}-{}.");
