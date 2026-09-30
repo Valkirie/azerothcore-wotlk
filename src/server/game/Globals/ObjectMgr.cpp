@@ -10540,7 +10540,7 @@ bool ObjectMgr::IsScalable(Unit* const owner, Unit* const target) const //RCS
     if (!owner || !target || target->GetTypeId() == TYPEID_DYNAMICOBJECT)
         return false;
 
-    // Mind Controlled creatures should not have scaled damage dealt/received
+    // Mind Controlled creatures should not have scaled damage dealt/received.
     if (owner->IsCreature() && target->IsCreature())
         if (owner->IsCharmed() || target->IsCharmed())
             return false;
@@ -10883,22 +10883,26 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
         {
             // set units
             player = ownerOwner->ToPlayer();
+            creature = target->ToCreature();
         }
         else if (ownerOwner->IsCreature() && targetOwner->IsPlayer())
         {
             // set units
             player = targetOwner->ToPlayer();
+            creature = owner->ToCreature();
         }
 
-		// set units
-		creature = target->ToCreature();
-
-		// set level (WHY !?)
-        origin_level = target->GetLevel(); // Pet-vs-creature scaling uses the target creature's native baseline.
-        scaled_level = owner->GetLevel(); // Pet-vs-creature scaling uses the attacker's native pet level.
-
-		// Pv2 : Target is the Pet
-		pAggro |= AGGRO_PVE;
+        if (player && creature && pAggro == AGGRO_NONE)
+        {
+            origin_level = creature->GetLevel();
+            scaled_level = creature->getLevelForTarget(player);
+            pAggro |= AGGRO_PVE;
+        }
+        else if (pAggro == AGGRO_PVP)
+        {
+            origin_level = owner->GetLevel();
+            scaled_level = target->GetLevel();
+        }
     }
     else
         return olddamage;
