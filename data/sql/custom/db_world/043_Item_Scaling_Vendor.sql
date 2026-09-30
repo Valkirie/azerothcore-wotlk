@@ -104,12 +104,7 @@ SELECT CASE
     ELSE 'meal'
 END AS family_name, food.item
 FROM rochenoire_vendor_food_drink food
-JOIN item_template ON item_template.entry = food.item
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM rochenoire_vendor_family existing
-    WHERE existing.item = food.item
-);
+JOIN item_template ON item_template.entry = food.item;
 
 INSERT IGNORE INTO rochenoire_items_not_scaled_from_vendors (ItemId, `comment`)
 SELECT item, family_name
@@ -141,7 +136,7 @@ FROM (
         ROW_NUMBER() OVER (
             PARTITION BY source.entry, family.item
             ORDER BY source.slot, source.item, source.ExtendedCost, COALESCE(source.VerifiedBuild, -1)
-        ) AS row_number
+        ) AS candidate_rank
     FROM rochenoire_vendor_source source
     JOIN rochenoire_vendor_family family ON source.item = family.item
     WHERE NOT EXISTS (
@@ -151,7 +146,7 @@ FROM (
           AND existing.item = family.item
     )
 ) candidates
-WHERE row_number = 1;
+WHERE candidate_rank = 1;
 
 -- Swap the completed replacement into place atomically, then remove the old table.
 RENAME TABLE npc_vendor TO rochenoire_save_npc_vendor,
