@@ -422,8 +422,16 @@ public:
     void AbsorbHeal(uint32 amount)
     {
         amount = std::min(amount, GetHeal());
-        m_absorb += amount;
-        m_heal -= amount;
+        if (m_hasBeenScaled && m_isValuesForTarget)
+        {
+            m_altAbsorb += amount;
+            m_altHeal -= amount;
+        }
+        else
+        {
+            m_absorb += amount;
+            m_heal -= amount;
+        }
 
         amount = std::min(amount, GetEffectiveHeal());
         m_effectiveHeal -= amount;
@@ -1167,6 +1175,7 @@ public:
     [[nodiscard]] uint32 GetMaxHealth() const { return GetUInt32Value(UNIT_FIELD_MAXHEALTH); }
     [[nodiscard]] uint32 GetHealthForTarget(Unit const* target) const;
     [[nodiscard]] uint32 GetMaxHealthForTarget(Unit const* target) const;
+    void ForceLevelScalingUpdate();
     [[nodiscard]] float GetHealthPct() const { return GetMaxHealth() ? 100.f * GetHealth() / GetMaxHealth() : 0.0f; }
     int32 GetHealthGain(int32 dVal);
     [[nodiscard]] uint32 GetCreateHealth() const { return GetUInt32Value(UNIT_FIELD_BASE_HEALTH); }

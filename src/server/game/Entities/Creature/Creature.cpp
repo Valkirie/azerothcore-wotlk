@@ -1575,10 +1575,13 @@ void Creature::SelectLevel(bool changelevel)
 
 void Creature::RefreshLevelVariation()
 {
+    SetLevelVar(0);
     if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreature(GetSpawnId()))
         SetLevelVar(*levelVar);
     else if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreatureTemplate(GetEntry()))
         SetLevelVar(*levelVar);
+
+    ForceLevelScalingUpdate();
 }
 
 float Creature::_GetHealthMod(int32 Rank)

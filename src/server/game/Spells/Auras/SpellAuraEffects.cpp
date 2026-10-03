@@ -6350,7 +6350,7 @@ void AuraEffect::HandlePeriodicDamageAurasTick(Unit* target, Unit* caster) const
     // Script Hook For HandlePeriodicDamageAurasTick -- Allow scripts to change the Damage pre class mitigation calculations
     sScriptMgr->ModifyPeriodicDamageAurasTick(target, caster, damage, GetSpellInfo());
 
-    if (caster)
+    if (caster && GetAuraType() != SPELL_AURA_PERIODIC_DAMAGE_PERCENT)
     {
         bool isScaled = false;
         float ratio = 1.0f;
@@ -6466,8 +6466,9 @@ void AuraEffect::HandlePeriodicHealthLeechAuraTick(Unit* target, Unit* caster) c
     CleanDamage cleanDamage = CleanDamage(0, 0, BASE_ATTACK, MELEE_HIT_NORMAL);
 
     uint32 damage = std::max(GetAmount(), 0);
+    float ratio = 1.0f;
     if (caster)
-        damage = uint32(std::lround(sObjectMgr->ScaleDamage(caster, target, float(damage))));
+        damage = uint32(std::lround(sObjectMgr->ScaleDamage(caster, target, float(damage), ratio)));
 
     // Script Hook For HandlePeriodicHealthLeechAurasTick -- Allow scripts to change the Damage pre class mitigation calculations
     sScriptMgr->ModifyPeriodicDamageAurasTick(target, caster, damage, GetSpellInfo());
@@ -6549,6 +6550,9 @@ void AuraEffect::HandlePeriodicHealthLeechAuraTick(Unit* target, Unit* caster) c
         return;
 
     float gainMultiplier = GetSpellInfo()->Effects[GetEffIndex()].CalcValueMultiplier(caster);
+
+    if (sObjectMgr->UsesCreatureStorageScaling(caster, target) && ratio > 0.0f)
+        new_damage = int32(std::lround(float(new_damage) / ratio));
 
     uint32 heal = uint32(caster->SpellHealingBonusDone(caster, GetSpellInfo(), uint32(new_damage * gainMultiplier), DOT, GetEffIndex(), 0.0f, GetBase()->GetStackAmount()));
     heal = uint32(caster->SpellHealingBonusTaken(caster, GetSpellInfo(), heal, DOT, GetBase()->GetStackAmount()));
@@ -6910,6 +6914,9 @@ void AuraEffect::HandlePeriodicPowerBurnAuraTick(Unit* target, Unit* caster) con
     int32 scaledDamage = int32(std::lround(sObjectMgr->ScaleDamage(caster, target, float(damage), ratio, SPELLTYPE_POWER)));
 
     uint32 gain = uint32(-target->ModifyPower(PowerType, -scaledDamage));
+    uint32 damageGain = gain;
+    if (ratio > 0.0f)
+        damageGain = uint32(std::lround(float(damageGain) / ratio));
 
     float dmgMultiplier = GetSpellInfo()->Effects[GetEffIndex()].CalcValueMultiplier(caster);
 
@@ -6917,7 +6924,7 @@ void AuraEffect::HandlePeriodicPowerBurnAuraTick(Unit* target, Unit* caster) con
     // maybe has to be sent different to client, but not by SMSG_PERIODICAURALOG
     SpellNonMeleeDamage damageInfo(caster, target, spellProto, spellProto->SchoolMask);
     // no SpellDamageBonus for burn mana
-    caster->CalculateSpellDamageTaken(&damageInfo, int32(gain * dmgMultiplier), spellProto);
+    caster->CalculateSpellDamageTaken(&damageInfo, int32(damageGain * dmgMultiplier), spellProto);
 
     Unit::DealDamageMods(damageInfo.target, damageInfo.damage, &damageInfo.absorb);
 

@@ -1771,8 +1771,12 @@ private:
 public:
     // Returns whether the owner/target pair is eligible for Rochenoire level scaling.
     bool IsScalable(Unit* const owner, Unit* const target) const;
+    // Returns whether scaled values are converted into a native creature storage domain.
+    bool UsesCreatureStorageScaling(Unit* owner, Unit* target) const;
     // Resolves the effective creature level used when interacting with a player.
     uint8 GetLevelScaled(Unit* owner, Unit* target) const;
+    // Returns the effective-to-native creature health or mana ratio for a level.
+    float GetCreatureBaseStatRatio(Creature const* creature, uint8 scaledLevel, SpellType scalingType) const;
 
     ZoneFlex const* GetAreaZoneFlex(uint32 areaId, uint32 zoneId = 0) const
     {
@@ -1795,8 +1799,6 @@ public:
     float ScaleDamageReverse(Unit* owner, Unit* target, float damage, SpellType scalingType) const { bool isScaled = false; float ratio = 1.0f; return ScaleDamage(owner, target, damage, isScaled, ratio, nullptr, EFFECT_0, true, scalingType); }
     float ScaleDamageReverse(Unit* owner, Unit* target, float damage, SpellInfo const* spellProto = nullptr) const { bool isScaled = false; float ratio = 1.0f; return ScaleDamage(owner, target, damage, isScaled, ratio, spellProto, EFFECT_0, true); }
     float ScaleDamageReverse(Unit* owner, Unit* target, float damage, float& ratio, SpellInfo const* spellProto = nullptr) const { bool isScaled = false; return ScaleDamage(owner, target, damage, isScaled, ratio, spellProto, EFFECT_0, true); }
-    // Returns the health modifier needed to translate values between two levels.
-    float RatioModHealth(int32 level, int32 scaledLevel) const;
     // Classifies a spell effect for the custom damage, heal, or power scaling path.
     SpellType GetSpellDamageType(SpellInfo const* spellProto, SpellEffIndex effIndex) const;
 

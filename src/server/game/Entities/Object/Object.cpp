@@ -3847,7 +3847,7 @@ void WorldObject::SendSpellNonMeleeDamageLog(Unit* target, SpellInfo const* spel
     float ratio = 1.0f;
     if (owner && sObjectMgr->IsScalable(owner, target))
         sObjectMgr->ScaleDamage(owner, target, 1.0f, ratio);
-    if (ratio > 0.0f && ratio != 1.0f)
+    if (owner && sObjectMgr->UsesCreatureStorageScaling(owner, target) && ratio > 0.0f && ratio != 1.0f)
     {
         damage = uint32(std::lround(float(damage) / ratio));
         absorb = uint32(std::lround(float(absorb) / ratio));

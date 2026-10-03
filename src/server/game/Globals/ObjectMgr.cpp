@@ -10487,44 +10487,32 @@ uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
     else // eVe case : change nothing
         return Realowner->GetLevel(); // Non-creature interactions do not use creature target scaling.
 
-    uint8 level = player->GetLevel(); // Scaling is anchored to the player's actual progression level.
+    int32 level = player->GetLevel(); // Scaling is anchored to the player's actual progression level.
 
     if (Realowner->IsCreature())
     {
-        // support specific behaviors
-        // creature level seen by player is modified according to the zone we are fighting in.
         uint32 AreaID       = creature->GetMap() ? creature->GetAreaId() : 0;
         uint32 ZoneID       = creature->GetMap() ? creature->GetZoneId() : 0;
-        uint8 arealevel     = player->getAreaZoneLevel(AreaID);
-        level               = arealevel;
 
-        // support specific behaviors : world boss
-        // worldboss level should be able to go up to level 80 no matter the area
         if (creature->isWorldBoss())
-        {
-            if (arealevel < player->GetLevel())
-                level = player->GetLevel(); // World bosses must not scale below the player's real level.
-
             level += sWorld->getIntConfig(CONFIG_WORLD_BOSS_LEVEL_DIFF);
-        }
         else
         {
-            if (const ZoneFlex* thisZone = sObjectMgr->GetAreaZoneFlex(AreaID, ZoneID))
-            {
+            if (ZoneFlex const* thisZone = sObjectMgr->GetAreaZoneFlex(AreaID, ZoneID))
                 if (thisZone->IsLowLevel())
                     return creature->GetLevel(); // Low-level zones explicitly opt out of scaling.
 
-                level = std::min(level, (uint8)sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL));
+            level += creature->GetLevelVar();
+        }
 
-                // update level
-                level += creature->GetLevelVar();
-
-                // make sure level doesn't exceed the zone threshold (max)
-                // todo: this should be handled smartly based on creature type (elite, rare, unique, ...)
-                if (!creature->isElite())
-                    level = std::min(level, thisZone->LevelRangeMax);
-
-                // level = std::max(level, thisZone->LevelRangeMin);
+        if (sWorld->getBoolConfig(CONFIG_BOOL_SCALE_PVE_ITEMLEVEL))
+        {
+            float expectedItemLevel = float(sObjectMgr->GetPlayerExpectedItemLevel(player->GetLevel()));
+            if (expectedItemLevel > 0.0f)
+            {
+                float itemLevelModifier = float(player->GetItemLevel()) / expectedItemLevel;
+                itemLevelModifier = std::clamp(itemLevelModifier, sWorld->getRate(RATE_SCALE_PVE_ITEMLEVEL), 1.0f);
+                level = int32(std::floor(float(level) * itemLevelModifier));
             }
         }
     }
@@ -10532,7 +10520,34 @@ uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
     if (level < 1 || level > 200)
         return 1;
 
-    return level;
+    return uint8(level);
+}
+
+float ObjectMgr::GetCreatureBaseStatRatio(Creature const* creature, uint8 scaledLevel, SpellType scalingType) const
+{
+    if (!creature || !creature->GetLevel() || !scaledLevel || creature->GetLevel() == scaledLevel)
+        return 1.0f;
+
+    CreatureTemplate const* cinfo = creature->GetCreatureTemplate();
+    if (!cinfo)
+        return 1.0f;
+
+    CreatureBaseStats const* originStats = sObjectMgr->GetCreatureBaseStats(creature->GetLevel(), cinfo->unit_class);
+    CreatureBaseStats const* scaledStats = sObjectMgr->GetCreatureBaseStats(scaledLevel, cinfo->unit_class);
+    if (!originStats || !scaledStats)
+        return 1.0f;
+
+    double originValue = scalingType == SPELLTYPE_POWER
+        ? originStats->BaseMana * cinfo->ModMana
+        : originStats->BaseHealth[cinfo->expansion] * cinfo->ModHealth;
+    double scaledValue = scalingType == SPELLTYPE_POWER
+        ? scaledStats->BaseMana * cinfo->ModMana
+        : scaledStats->BaseHealth[cinfo->expansion] * cinfo->ModHealth;
+
+    if (originValue <= 0.0 || scaledValue <= 0.0)
+        return 1.0f;
+
+    return float(scaledValue / originValue);
 }
 
 bool ObjectMgr::IsScalable(Unit* const owner, Unit* const target) const //RCS
@@ -10595,24 +10610,31 @@ bool ObjectMgr::IsScalable(Unit* const owner, Unit* const target) const //RCS
         }
     }
 
-    // Check creatures flags_extra for disable block
-    if (creature->GetTypeId() == TYPEID_UNIT)
-    {
-        if (creature->IsGuard())
-            return false;
+    if (creature->IsGuard())
+        return false;
 
-        if (creature->IsCivilian()) //Might need to be removed !
-            return false;
+    if (creature->IsCivilian()) //Might need to be removed !
+        return false;
 
-        if (creature->GetCreatureType() == CREATURE_TYPE_CRITTER)
-            return false;
-    }
+    if (creature->GetCreatureType() == CREATURE_TYPE_CRITTER)
+        return false;
 
-    if (const ZoneFlex* thisLocation = sObjectMgr->GetAreaZoneFlex(creature->GetAreaId(), creature->GetZoneId()))
+    if (ZoneFlex const* thisLocation = sObjectMgr->GetAreaZoneFlex(creature->GetAreaId(), creature->GetZoneId()))
         return !thisLocation->IsLowLevel();
 
     return true;
 }
+
+bool ObjectMgr::UsesCreatureStorageScaling(Unit* owner, Unit* target) const
+{
+    if (!owner || !target)
+        return false;
+
+    Unit* realOwner = owner->GetCharmerOrOwnerOrSelf();
+    Unit* realTarget = target->GetCharmerOrOwnerOrSelf();
+    return realOwner && realTarget && realOwner->IsPlayer() && realTarget->IsCreature();
+}
+
 // Load zone ranges and per-creature level offsets used by custom scaling.
 
 void ObjectMgr::LoadZoneScale()
@@ -10726,7 +10748,6 @@ int8 const* ObjectMgr::GetLevelScaleCreature(uint32 guid) const
     return itr != mCreatureForcedLevelVarMap.end() ? &itr->second : nullptr;
 }
 
-
 // Scale creature armor to the effective level of the player in PvE combat.
 uint32 ObjectMgr::ScaleArmor(Unit* owner, Unit* target, uint32 oldarmor) const
 {
@@ -10780,19 +10801,15 @@ uint32 ObjectMgr::ScaleArmor(Unit* owner, Unit* target, uint32 oldarmor) const
 
         float ratio_armor = 1.0f;
 
-        // Check creatures flags_extra for disable block
-        if (creature->GetTypeId() == TYPEID_UNIT)
+        if (CreatureTemplate const* cinfo = creature->GetCreatureTemplate())
         {
-            if (CreatureTemplate const* cinfo = creature->GetCreatureTemplate())
+            if (cinfo->unit_class != 0)
             {
-                if (cinfo->unit_class != 0)
-                {
-                    if (CreatureBaseStats const* cCLSS = sObjectMgr->GetCreatureBaseStats(origin_level, cinfo->unit_class))
-                        ratio_armor = armor / (cCLSS->BaseArmor * cinfo->ModArmor);
+                if (CreatureBaseStats const* cCLSS = sObjectMgr->GetCreatureBaseStats(origin_level, cinfo->unit_class))
+                    ratio_armor = armor / (cCLSS->BaseArmor * cinfo->ModArmor);
 
-                    if (CreatureBaseStats const* cCLSS = sObjectMgr->GetCreatureBaseStats(scaled_level, cinfo->unit_class))
-                        armor = cCLSS->BaseArmor * cinfo->ModArmor * ratio_armor;
-                }
+                if (CreatureBaseStats const* cCLSS = sObjectMgr->GetCreatureBaseStats(scaled_level, cinfo->unit_class))
+                    armor = cCLSS->BaseArmor * cinfo->ModArmor * ratio_armor;
             }
         }
     }
@@ -10814,102 +10831,39 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
 
     Creature* creature = nullptr;
     Player* player = nullptr;
+    Player* targetPlayer = nullptr;
 
-    uint8 scaled_level;
-    uint8 origin_level;
+    uint8 scaled_level = 0;
+    uint8 origin_level = 0;
 
     uint32 pAggro = AGGRO_NONE;
+    Unit* realOwner = owner->GetCharmerOrOwnerOrSelf();
+    Unit* realTarget = target->GetCharmerOrOwnerOrSelf();
 
-    if (owner->IsCreature() && target->IsPlayer())
+    if (realOwner->IsPlayer() && realTarget->IsPlayer())
     {
-        // set units
-        player = target->ToPlayer();
-        creature = owner->ToCreature();
-
-        // set level
-        origin_level = creature->GetLevel(); // Preserve the creature's native level as the scaling baseline.
-        scaled_level = creature->getLevelForTarget(player);
-
-        // EvP : Creature is the attacker
-        pAggro |= AGGRO_EVP;
-    }
-    else if (target->IsCreature() && owner->IsPlayer())
-    {
-        // set units
-        player = owner->ToPlayer();
-        creature = target->ToCreature();
-
-        // set level
-        origin_level = creature->GetLevel(); // Preserve the creature's native level as the scaling baseline.
-        scaled_level = creature->getLevelForTarget(player);
-
-        // PvE : Player is the attacker
-        pAggro |= AGGRO_PVE;
-    }
-    else if (target->IsPlayer() && owner->IsPlayer())
-    {
-        // set units
-        player = owner->ToPlayer();
-        Player* targetPlayer = target->ToPlayer();
-
-        // set level
-        origin_level = player->GetLevel(); // PvP scaling compares the attacker's real player level.
-        scaled_level = targetPlayer->GetLevel(); // PvP scaling uses the target player's real level.
-
-        if (owner->IsHostileTo(target) && !sWorld->getBoolConfig(CONFIG_BOOL_SCALE_PVP_HOSTILE))
-            scaled_level = origin_level;
-
-        if (owner->IsFriendlyTo(target) && !sWorld->getBoolConfig(CONFIG_BOOL_SCALE_PVP_FRIENDLY))
-            scaled_level = origin_level;
-
-        // PvP : Player is the attacker
+        player = realOwner->ToPlayer();
+        targetPlayer = realTarget->ToPlayer();
+        origin_level = player->GetLevel();
+        scaled_level = targetPlayer->GetLevel();
         pAggro |= AGGRO_PVP;
     }
-    else if (target->IsCreature() && owner->IsCreature())
+    else if (realOwner->IsPlayer() && realTarget->IsCreature())
     {
-        // get owners (IsScalable() will filter when both owners are creatures)
-        Unit* ownerOwner = owner->GetCharmerOrOwnerOrSelf();
-        Unit* targetOwner = target->GetCharmerOrOwnerOrSelf();
-
-        if (ownerOwner->IsPlayer() && targetOwner->IsPlayer())
-        {
-            // set units
-            player = ownerOwner->ToPlayer();
-
-            // PvP : Player is the attacker
-            pAggro |= AGGRO_PVP;
-        }
-        else if (ownerOwner->IsPlayer() && targetOwner->IsCreature())
-        {
-            // set units
-            player = ownerOwner->ToPlayer();
-            creature = target->ToCreature();
-
-            // set level
-            origin_level = creature->GetLevel(); // Preserve the creature's native level as the scaling baseline.
-            scaled_level = creature->getLevelForTarget(player);
-
-            // PvE : Player is the attacker
-            pAggro |= AGGRO_PVE;
-        }
-        else if (ownerOwner->IsCreature() && targetOwner->IsPlayer())
-        {
-            // set units
-            player = targetOwner->ToPlayer();
-            creature = owner->ToCreature();
-
-            // set level
-            scaled_level = creature->GetLevel(); // Preserve the creature's native level as the scaling baseline.
-            origin_level = creature->getLevelForTarget(player);
-
-            // EvP : Creature is the attacker
-            pAggro |= AGGRO_EVP;
-        }
-        else if (ownerOwner->IsCreature() && targetOwner->IsCreature())
-        {
-            // EvE : Not our business
-            return olddamage;
-        }
+        player = realOwner->ToPlayer();
+        creature = realTarget->ToCreature();
+        origin_level = creature->GetLevel();
+        scaled_level = creature->getLevelForTarget(player);
+        pAggro |= AGGRO_PVE;
+    }
+    else if (realOwner->IsCreature() && realTarget->IsPlayer())
+    {
+        creature = realOwner->ToCreature();
+        targetPlayer = realTarget->ToPlayer();
+        player = targetPlayer;
+        origin_level = creature->GetLevel();
+        scaled_level = creature->getLevelForTarget(player);
+        pAggro |= AGGRO_EVP;
     }
     else
         return olddamage;
@@ -10926,24 +10880,6 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
     if (spellType == SPELLTYPE_UNK && spellProto)
         spellType = GetSpellDamageType(spellProto, eff_idx);
 
-    // Check if PvE item level scaling is enabled in the server configuration
-    if (sWorld->getBoolConfig(CONFIG_BOOL_SCALE_PVE_ITEMLEVEL))
-    {
-        // Ensure the player is not a pet and the combat scenario is PvE or EvP
-        const bool isPvE = (pAggro & (AGGRO_EVP | AGGRO_PVE)) && !(pAggro & AGGRO_PVP);
-        if (isPvE)
-        {
-            // Calculate the item level modifier as a ratio of the player's actual item level to the expected item level for their current level
-            float itemLevelModifier = (float)player->GetItemLevel() / (float)sObjectMgr->GetPlayerExpectedItemLevel(player->GetLevel()); // Expected item level is based on real player progression.
-
-            // Clamp the item level modifier between a configured minimum value and 1.0 (no scaling beyond normal level)
-            itemLevelModifier = std::clamp(itemLevelModifier, sWorld->getRate(RATE_SCALE_PVE_ITEMLEVEL), 1.0f);
-
-            // Scale the effective target level by applying the item level modifier
-            scaled_level = (uint8)std::floor((float)scaled_level * itemLevelModifier);
-        }
-    }
-
     if (spellType == SPELLTYPE_CHARSTAT)
     {
         float caster_funct = (0.0072 * origin_level * origin_level + 1.2594 * (origin_level)+21.718);  //RCS //?? //Might not work above lvl 70  //Maybe use basehealth or a base stat per level ?
@@ -10951,6 +10887,17 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
 
         float target_value = (0.0072 * scaled_level * scaled_level + 1.2594 * (scaled_level)+21.718);  //RCS //?? //Might not work above lvl 70 //Maybe use basehealth or a base stat per level ?
         damage = target_value * caster_ratio;
+    }
+    else if (pAggro & AGGRO_PVE)
+    {
+        SpellType baseStatType = spellType == SPELLTYPE_POWER ? SPELLTYPE_POWER : SPELLTYPE_DAMAGE;
+        float scale = GetCreatureBaseStatRatio(creature, scaled_level, baseStatType);
+        if (scale > 0.0f)
+        {
+            float ratio = 1.0f / scale;
+            damage = isRevert ? damage / ratio : damage * ratio;
+            Ratio = isRevert ? scale : ratio;
+        }
     }
     else if (spellType == SPELLTYPE_HEAL)
     {
@@ -10960,45 +10907,13 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
         float target_value = (0.0792541 * scaled_level * scaled_level + 1.93556 * (scaled_level)+4.56252);
         damage = target_value * caster_ratio;
     }
-    else if (pAggro & AGGRO_PVE)
-    {
-        uint32 max_value = spellType == SPELLTYPE_POWER ? creature->GetMaxPower(POWER_MANA) : creature->GetMaxHealth();
-        if (max_value <= 1)
-            return damage;
-
-        if (CreatureTemplate const* cinfo = creature->GetCreatureTemplate())
-        {
-            if (CreatureBaseStats const* scaledStats = sObjectMgr->GetCreatureBaseStats(scaled_level, cinfo->unit_class))
-            {
-                if (CreatureBaseStats const* originStats = sObjectMgr->GetCreatureBaseStats(origin_level, cinfo->unit_class))
-                {
-                    float scaledValue = spellType == SPELLTYPE_POWER
-                        ? scaledStats->BaseMana * cinfo->ModMana
-                        : scaledStats->BaseHealth[cinfo->expansion] * (cinfo->ModHealth * RatioModHealth(origin_level, scaled_level));
-                    float originValue = spellType == SPELLTYPE_POWER
-                        ? originStats->BaseMana * cinfo->ModMana
-                        : originStats->BaseHealth[cinfo->expansion] * cinfo->ModHealth;
-
-                    float ratio = originValue / scaledValue;
-
-                    // update damage output
-                    damage = isRevert ? damage / ratio : damage * ratio;
-
-                    // return the updated ratio
-                    Ratio = isRevert ? 1 / ratio : ratio;
-                }
-            }
-        }
-    }
     else if (pAggro & AGGRO_PVP || pAggro & AGGRO_EVP)
     {
         PlayerClassLevelInfo target_classInfo;
         PlayerClassLevelInfo owner_classInfo;
 
-        if (target->IsPlayer())
+        if (targetPlayer)
         {
-            Player* targetPlayer = target->ToPlayer();
-
             uint32 TargetClass = targetPlayer->getClass();
 
             sObjectMgr->GetPlayerClassLevelInfo(TargetClass, scaled_level, &target_classInfo);
@@ -11014,40 +10929,6 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
 
             // return the updated ratio
             Ratio = isRevert ? 1 / ratio : ratio;
-        }
-        else if (target->IsCreature())
-        {
-            Creature* targetCreature = target->ToCreature();
-            uint32 max_value = spellType == SPELLTYPE_POWER ? targetCreature->GetMaxPower(POWER_MANA) : targetCreature->GetMaxHealth();
-            if (max_value <= 1)
-                return damage;
-
-            if (CreatureTemplate const* cinfo = targetCreature->GetCreatureTemplate())
-            {
-                if (CreatureBaseStats const* scaledStats = sObjectMgr->GetCreatureBaseStats(scaled_level, cinfo->unit_class))
-                {
-                    if (CreatureBaseStats const* originStats = sObjectMgr->GetCreatureBaseStats(origin_level, cinfo->unit_class))
-                    {
-                        float scaledValue = spellType == SPELLTYPE_POWER
-                            ? scaledStats->BaseMana * cinfo->ModMana
-                            : scaledStats->BaseHealth[cinfo->expansion] * (cinfo->ModHealth * RatioModHealth(origin_level, scaled_level));
-                        float originValue = spellType == SPELLTYPE_POWER
-                            ? originStats->BaseMana * cinfo->ModMana
-                            : originStats->BaseHealth[cinfo->expansion] * cinfo->ModHealth;
-
-                        if (scaledValue <= 0.0f || originValue <= 0.0f)
-                            return damage;
-
-                        float ratio = originValue / scaledValue;
-
-                        // update damage output
-                        damage = isRevert ? damage / ratio : damage * ratio;
-
-                        // return the updated ratio
-                        Ratio = isRevert ? 1 / ratio : ratio;
-                    }
-                }
-            }
         }
     }
 
@@ -11096,25 +10977,19 @@ uint8 ObjectMgr::GetClosestLevelForItemLevel(uint8 itemLevel) const {
     uint8 closestDifference = std::numeric_limits<uint8>::max();
 
     // Iterate over the array to find the closest item level
-    for (uint8 level = 1; level <= 80; ++level) {
+    for (uint8 level = 1; level <= 80; ++level)
+    {
         uint8 levelItemLevel = expectedItemLevels[level - 1];
         uint8 difference = std::abs(levelItemLevel - itemLevel);
 
-        if (difference < closestDifference) {
+        if (difference < closestDifference)
+        {
             closestDifference = difference;
             closestLevel = level;
         }
     }
 
     return closestLevel;
-}
-
-float ObjectMgr::RatioModHealth(int32 level, int32 scaledlevel) const
-{
-    float MH = 0.000182826 * level * level + 0.000852 * level + 1.108;
-    float sMH = 0.000182826 * scaledlevel * scaledlevel + 0.000852 * scaledlevel + 1.108;
-
-    return sMH / MH;
 }
 
 SpellType ObjectMgr::GetSpellDamageType(SpellInfo const* spellProto, SpellEffIndex eff_idx) const
@@ -11231,7 +11106,6 @@ void ObjectMgr::LoadItemsNotScaledFromVendors()
     LOG_INFO("server.loading", ">> >> Loaded {} Not scaled items from vendors in {} ms", (unsigned long)mItemsNotScaledFromVendors.size(), GetMSTimeDiffToNow(oldMSTime));
     LOG_INFO("server.loading", " ");
 }
-
 
 void ObjectMgr::LoadLootConsumableScale()
 {

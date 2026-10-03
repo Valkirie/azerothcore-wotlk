@@ -1326,6 +1326,12 @@ public:
     static bool HandleReloadRochenoireScaleZoneCommand(ChatHandler* handler)
     {
         sObjectMgr->LoadZoneScale();
+        sMapMgr->DoForAllMaps([](Map* map)
+        {
+            for (auto const& [spawnId, creature] : map->GetCreatureBySpawnIdStore())
+                if (creature)
+                    creature->ForceLevelScalingUpdate();
+        });
         handler->SendGlobalGMSysMessage("Rochenoire zone scaling reloaded.");
         return true;
     }
