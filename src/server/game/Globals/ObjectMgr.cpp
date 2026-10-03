@@ -10902,10 +10902,10 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
     else if (spellType == SPELLTYPE_HEAL)
     {
         float caster_funct = (0.0792541 * origin_level * origin_level + 1.93556 * (origin_level)+4.56252);
-        float caster_ratio = damage / caster_funct;
-
         float target_value = (0.0792541 * scaled_level * scaled_level + 1.93556 * (scaled_level)+4.56252);
-        damage = target_value * caster_ratio;
+        float ratio = target_value / caster_funct;
+        damage = isRevert ? damage / ratio : damage * ratio;
+        Ratio = isRevert ? 1.0f / ratio : ratio;
     }
     else if (pAggro & AGGRO_PVP || pAggro & AGGRO_EVP)
     {
