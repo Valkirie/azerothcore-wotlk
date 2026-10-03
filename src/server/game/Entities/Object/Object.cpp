@@ -3843,6 +3843,17 @@ void WorldObject::SendSpellMiss(Unit* target, uint32 spellID, SpellMissInfo miss
 
 void WorldObject::SendSpellNonMeleeDamageLog(Unit* target, SpellInfo const* spellInfo, uint32 damage, SpellSchoolMask schoolMask, uint32 absorb, uint32 resist)
 {
+    Unit* owner = IsGameObject() ? ToGameObject()->GetOwner() : nullptr;
+    float ratio = 1.0f;
+    if (owner && sObjectMgr->IsScalable(owner, target))
+        sObjectMgr->ScaleDamage(owner, target, 1.0f, ratio);
+    if (ratio > 0.0f && ratio != 1.0f)
+    {
+        damage = uint32(std::lround(float(damage) / ratio));
+        absorb = uint32(std::lround(float(absorb) / ratio));
+        resist = uint32(std::lround(float(resist) / ratio));
+    }
+
     // in cheat mode swap absorb with damage, this way damage stays visible while the hp bar will not drop
     if (target->IsPlayer() && target->ToPlayer()->GetCommandStatus(CHEAT_GOD))
     {
@@ -3855,7 +3866,7 @@ void WorldObject::SendSpellNonMeleeDamageLog(Unit* target, SpellInfo const* spel
     data << GetPackGUID();
     data << uint32(spellInfo->Id);
     data << uint32(damage);
-    int32 overkill = int32(damage) - int32(target->GetHealth());
+    int32 overkill = int32(damage) - int32(target->GetHealthForTarget(owner));
     data << uint32(overkill > 0 ? overkill : 0);
     data << uint8(schoolMask);
     data << uint32(absorb);

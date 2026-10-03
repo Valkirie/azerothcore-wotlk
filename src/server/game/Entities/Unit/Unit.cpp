@@ -2338,6 +2338,9 @@ void Unit::DealDamageShieldDamage(Unit* victim)
         }
 
         uint32 absorb = 0;
+        float ratio = 1.0f;
+        if (sObjectMgr->IsScalable(victim, this))
+            sObjectMgr->ScaleDamage(victim, this, 1.0f, ratio);
 
         // Scale before absorb effects consume the reflected damage so the packet,
         // shield depletion, mana cost, and health loss use the same value.
@@ -2349,14 +2352,17 @@ void Unit::DealDamageShieldDamage(Unit* victim)
         damage = dmgInfo.GetDamage();
 
         Unit::DealDamageMods(this, damage, &absorb);
+        uint32 logDamage = damage;
+        if (ratio > 0.0f && ratio != 1.0f)
+            logDamage = uint32(std::lround(float(logDamage) / ratio));
 
         /// @todo: Move this to a packet handler
         WorldPacket data(SMSG_SPELLDAMAGESHIELD, (8 + 8 + 4 + 4 + 4 + 4));
         data << victim->GetGUID();
         data << GetGUID();
         data << uint32(i_spellProto->Id);
-        data << uint32(damage);                  // Damage
-        int32 overkill = int32(damage) - int32(GetHealth());
+        data << uint32(logDamage);               // Damage
+        int32 overkill = int32(logDamage) - int32(GetHealthForTarget(victim));
         data << uint32(overkill > 0 ? overkill : 0); // Overkill
         data << uint32(i_spellProto->GetSchoolMask());
         victim->SendMessageToSet(&data, true);
@@ -6734,6 +6740,17 @@ void Unit::SendSpellNonMeleeDamageLog(SpellNonMeleeDamage* log)
 
 void Unit::SendSpellNonMeleeDamageLog(Unit* target, SpellInfo const* spellInfo, uint32 Damage, SpellSchoolMask damageSchoolMask, uint32 AbsorbedDamage, uint32 Resist, bool PhysicalDamage, uint32 Blocked, bool CriticalHit /*= false*/, bool Split /*= false*/)
 {
+    float ratio = 1.0f;
+    if (sObjectMgr->IsScalable(this, target))
+        sObjectMgr->ScaleDamage(this, target, 1.0f, ratio);
+    if (ratio > 0.0f && ratio != 1.0f)
+    {
+        Damage = uint32(std::lround(float(Damage) / ratio));
+        AbsorbedDamage = uint32(std::lround(float(AbsorbedDamage) / ratio));
+        Resist = uint32(std::lround(float(Resist) / ratio));
+        Blocked = uint32(std::lround(float(Blocked) / ratio));
+    }
+
     SpellNonMeleeDamage log(this, target, spellInfo, damageSchoolMask);
     log.damage = Damage;
     log.absorb = AbsorbedDamage;
@@ -6789,6 +6806,18 @@ void Unit::ProcSkillsAndAuras(Unit* actor, Unit* victim, uint32 procAttacker, ui
 void Unit::SendPeriodicAuraLog(SpellPeriodicAuraLogInfo* pInfo)
 {
     AuraEffect const* aura = pInfo->auraEff;
+    Unit* caster = aura->GetCaster();
+    bool const isDamage = aura->GetAuraType() == SPELL_AURA_PERIODIC_DAMAGE || aura->GetAuraType() == SPELL_AURA_PERIODIC_DAMAGE_PERCENT;
+    bool const isPower = aura->GetAuraType() == SPELL_AURA_OBS_MOD_POWER || aura->GetAuraType() == SPELL_AURA_PERIODIC_ENERGIZE || aura->GetAuraType() == SPELL_AURA_PERIODIC_MANA_LEECH;
+    float ratio = 1.0f;
+    if (caster && (isDamage || isPower) && sObjectMgr->IsScalable(caster, this))
+    {
+        if (isPower)
+            sObjectMgr->ScaleDamage(caster, this, 1.0f, ratio, SPELLTYPE_POWER);
+        else
+            sObjectMgr->ScaleDamage(caster, this, 1.0f, ratio);
+    }
+
     WorldPacket data(SMSG_PERIODICAURALOG, 30);
     data << GetPackGUID();
     data << aura->GetCasterGUID().WriteAsPacked();
@@ -6803,6 +6832,15 @@ void Unit::SendPeriodicAuraLog(SpellPeriodicAuraLogInfo* pInfo)
                 //IF we are in cheat mode we swap absorb with damage and set damage to 0, this way we can still debug damage but our hp bar will not drop
                 uint32 damage = pInfo->damage;
                 uint32 absorb = pInfo->absorb;
+                uint32 overDamage = pInfo->overDamage;
+                uint32 resist = pInfo->resist;
+                if (ratio > 0.0f && ratio != 1.0f)
+                {
+                    damage = uint32(std::lround(float(damage) / ratio));
+                    absorb = uint32(std::lround(float(absorb) / ratio));
+                    overDamage = uint32(std::lround(float(overDamage) / ratio));
+                    resist = uint32(std::lround(float(resist) / ratio));
+                }
                 if (IsPlayer() && ToPlayer()->GetCommandStatus(CHEAT_GOD))
                 {
                     absorb = damage;
@@ -6810,10 +6848,10 @@ void Unit::SendPeriodicAuraLog(SpellPeriodicAuraLogInfo* pInfo)
                 }
 
                 data << uint32(damage);                         // damage
-                data << uint32(pInfo->overDamage);              // overkill?
+                data << uint32(overDamage);                     // overkill?
                 data << uint32(aura->GetSpellInfo()->GetSchoolMask());
                 data << uint32(absorb);                         // absorb
-                data << uint32(pInfo->resist);                  // resist
+                data << uint32(resist);                         // resist
                 data << uint8(pInfo->critical);                 // new 3.1.2 critical tick
             }
             break;
@@ -6827,11 +6865,11 @@ void Unit::SendPeriodicAuraLog(SpellPeriodicAuraLogInfo* pInfo)
         case SPELL_AURA_OBS_MOD_POWER:
         case SPELL_AURA_PERIODIC_ENERGIZE:
             data << uint32(aura->GetMiscValue());           // power type
-            data << uint32(pInfo->damage);                  // damage
+            data << uint32(ratio > 0.0f && ratio != 1.0f ? std::lround(float(pInfo->damage) / ratio) : pInfo->damage); // damage
             break;
         case SPELL_AURA_PERIODIC_MANA_LEECH:
             data << uint32(aura->GetMiscValue());           // power type
-            data << uint32(pInfo->damage);                  // amount
+            data << uint32(ratio > 0.0f && ratio != 1.0f ? std::lround(float(pInfo->damage) / ratio) : pInfo->damage); // amount
             data << float(pInfo->multiplier);               // gain multiplier
             break;
         default:

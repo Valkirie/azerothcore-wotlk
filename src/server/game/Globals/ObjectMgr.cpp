@@ -10830,7 +10830,7 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
         origin_level = creature->GetLevel(); // Preserve the creature's native level as the scaling baseline.
         scaled_level = creature->getLevelForTarget(player);
 
-        // PvE : Creature is the attacker
+        // EvP : Creature is the attacker
         pAggro |= AGGRO_EVP;
     }
     else if (target->IsCreature() && owner->IsPlayer())
@@ -10884,24 +10884,31 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
             // set units
             player = ownerOwner->ToPlayer();
             creature = target->ToCreature();
+
+            // set level
+            origin_level = creature->GetLevel(); // Preserve the creature's native level as the scaling baseline.
+            scaled_level = creature->getLevelForTarget(player);
+
+            // PvE : Player is the attacker
+            pAggro |= AGGRO_PVE;
         }
         else if (ownerOwner->IsCreature() && targetOwner->IsPlayer())
         {
             // set units
             player = targetOwner->ToPlayer();
             creature = owner->ToCreature();
-        }
 
-        if (player && creature && pAggro == AGGRO_NONE)
-        {
-            origin_level = creature->GetLevel();
-            scaled_level = creature->getLevelForTarget(player);
-            pAggro |= AGGRO_PVE;
+            // set level
+            scaled_level = creature->GetLevel(); // Preserve the creature's native level as the scaling baseline.
+            origin_level = creature->getLevelForTarget(player);
+
+            // EvP : Creature is the attacker
+            pAggro |= AGGRO_EVP;
         }
-        else if (pAggro == AGGRO_PVP)
+        else if (ownerOwner->IsCreature() && targetOwner->IsCreature())
         {
-            origin_level = owner->GetLevel();
-            scaled_level = target->GetLevel();
+            // EvE : Not our business
+            return olddamage;
         }
     }
     else
@@ -10990,7 +10997,9 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
 
         if (target->IsPlayer())
         {
-            uint32 TargetClass = target->getClass();
+            Player* targetPlayer = target->ToPlayer();
+
+            uint32 TargetClass = targetPlayer->getClass();
 
             sObjectMgr->GetPlayerClassLevelInfo(TargetClass, scaled_level, &target_classInfo);
             sObjectMgr->GetPlayerClassLevelInfo(TargetClass, origin_level, &owner_classInfo);
@@ -11005,6 +11014,40 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
 
             // return the updated ratio
             Ratio = isRevert ? 1 / ratio : ratio;
+        }
+        else if (target->IsCreature())
+        {
+            Creature* targetCreature = target->ToCreature();
+            uint32 max_value = spellType == SPELLTYPE_POWER ? targetCreature->GetMaxPower(POWER_MANA) : targetCreature->GetMaxHealth();
+            if (max_value <= 1)
+                return damage;
+
+            if (CreatureTemplate const* cinfo = targetCreature->GetCreatureTemplate())
+            {
+                if (CreatureBaseStats const* scaledStats = sObjectMgr->GetCreatureBaseStats(scaled_level, cinfo->unit_class))
+                {
+                    if (CreatureBaseStats const* originStats = sObjectMgr->GetCreatureBaseStats(origin_level, cinfo->unit_class))
+                    {
+                        float scaledValue = spellType == SPELLTYPE_POWER
+                            ? scaledStats->BaseMana * cinfo->ModMana
+                            : scaledStats->BaseHealth[cinfo->expansion] * (cinfo->ModHealth * RatioModHealth(origin_level, scaled_level));
+                        float originValue = spellType == SPELLTYPE_POWER
+                            ? originStats->BaseMana * cinfo->ModMana
+                            : originStats->BaseHealth[cinfo->expansion] * cinfo->ModHealth;
+
+                        if (scaledValue <= 0.0f || originValue <= 0.0f)
+                            return damage;
+
+                        float ratio = originValue / scaledValue;
+
+                        // update damage output
+                        damage = isRevert ? damage / ratio : damage * ratio;
+
+                        // return the updated ratio
+                        Ratio = isRevert ? 1 / ratio : ratio;
+                    }
+                }
+            }
         }
     }
 
