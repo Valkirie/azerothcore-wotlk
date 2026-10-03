@@ -12208,7 +12208,21 @@ uint32 Unit::GetHealthForTarget(Unit const* target) const
     if (!GetLevel() || !scaledLevel || GetLevel() == scaledLevel)
         return health;
 
-    return uint32(std::min<double>(double(health) * sObjectMgr->RatioModHealth(GetLevel(), scaledLevel), std::numeric_limits<uint32>::max()));
+    if (CreatureTemplate const* cinfo = creature->GetCreatureTemplate())
+    {
+        if (CreatureBaseStats const* originStats = sObjectMgr->GetCreatureBaseStats(GetLevel(), cinfo->unit_class))
+        {
+            if (CreatureBaseStats const* scaledStats = sObjectMgr->GetCreatureBaseStats(scaledLevel, cinfo->unit_class))
+            {
+                double originValue = originStats->BaseHealth[cinfo->expansion] * cinfo->ModHealth;
+                double scaledValue = scaledStats->BaseHealth[cinfo->expansion] * cinfo->ModHealth;
+                if (originValue > 0.0 && scaledValue > 0.0)
+                    return uint32(std::min<double>(double(health) * scaledValue / originValue, std::numeric_limits<uint32>::max()));
+            }
+        }
+    }
+
+    return health;
 }
 
 uint32 Unit::GetMaxHealthForTarget(Unit const* target) const
@@ -12223,7 +12237,21 @@ uint32 Unit::GetMaxHealthForTarget(Unit const* target) const
     if (!GetLevel() || !scaledLevel || GetLevel() == scaledLevel)
         return maxHealth;
 
-    return uint32(std::min<double>(double(maxHealth) * sObjectMgr->RatioModHealth(GetLevel(), scaledLevel), std::numeric_limits<uint32>::max()));
+    if (CreatureTemplate const* cinfo = creature->GetCreatureTemplate())
+    {
+        if (CreatureBaseStats const* originStats = sObjectMgr->GetCreatureBaseStats(GetLevel(), cinfo->unit_class))
+        {
+            if (CreatureBaseStats const* scaledStats = sObjectMgr->GetCreatureBaseStats(scaledLevel, cinfo->unit_class))
+            {
+                double originValue = originStats->BaseHealth[cinfo->expansion] * cinfo->ModHealth;
+                double scaledValue = scaledStats->BaseHealth[cinfo->expansion] * cinfo->ModHealth;
+                if (originValue > 0.0 && scaledValue > 0.0)
+                    return uint32(std::min<double>(double(maxHealth) * scaledValue / originValue, std::numeric_limits<uint32>::max()));
+            }
+        }
+    }
+
+    return maxHealth;
 }
 
 void Unit::SetMaxHealth(uint32 val)
