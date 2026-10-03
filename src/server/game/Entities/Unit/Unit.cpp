@@ -12321,6 +12321,64 @@ uint32 Unit::GetMaxHealthForTarget(Unit const* target) const
     return maxHealth;
 }
 
+uint32 Unit::GetPowerForTarget(Unit const* target, Powers power) const
+{
+    uint32 currentPower = GetPower(power);
+
+    if (power != POWER_MANA || !target || target == this || !IsCreature() || !target->IsPlayer())
+        return currentPower;
+
+    Creature const* creature = ToCreature();
+    uint8 scaledLevel = creature->getLevelForTarget(target);
+    if (!GetLevel() || !scaledLevel || GetLevel() == scaledLevel)
+        return currentPower;
+
+    if (CreatureTemplate const* cinfo = creature->GetCreatureTemplate())
+    {
+        if (CreatureBaseStats const* originStats = sObjectMgr->GetCreatureBaseStats(GetLevel(), cinfo->unit_class))
+        {
+            if (CreatureBaseStats const* scaledStats = sObjectMgr->GetCreatureBaseStats(scaledLevel, cinfo->unit_class))
+            {
+                double originValue = originStats->BaseMana * cinfo->ModMana;
+                double scaledValue = scaledStats->BaseMana * cinfo->ModMana;
+                if (originValue > 0.0 && scaledValue > 0.0)
+                    return std::min<uint32>(uint32(std::lround(double(currentPower) * scaledValue / originValue)), GetMaxPowerForTarget(target, power));
+            }
+        }
+    }
+
+    return currentPower;
+}
+
+uint32 Unit::GetMaxPowerForTarget(Unit const* target, Powers power) const
+{
+    uint32 maxPower = GetMaxPower(power);
+
+    if (power != POWER_MANA || !target || target == this || !IsCreature() || !target->IsPlayer())
+        return maxPower;
+
+    Creature const* creature = ToCreature();
+    uint8 scaledLevel = creature->getLevelForTarget(target);
+    if (!GetLevel() || !scaledLevel || GetLevel() == scaledLevel)
+        return maxPower;
+
+    if (CreatureTemplate const* cinfo = creature->GetCreatureTemplate())
+    {
+        if (CreatureBaseStats const* originStats = sObjectMgr->GetCreatureBaseStats(GetLevel(), cinfo->unit_class))
+        {
+            if (CreatureBaseStats const* scaledStats = sObjectMgr->GetCreatureBaseStats(scaledLevel, cinfo->unit_class))
+            {
+                double originValue = originStats->BaseMana * cinfo->ModMana;
+                double scaledValue = scaledStats->BaseMana * cinfo->ModMana;
+                if (originValue > 0.0 && scaledValue > 0.0)
+                    return uint32(std::min<double>(double(maxPower) * scaledValue / originValue, std::numeric_limits<uint32>::max()));
+            }
+        }
+    }
+
+    return maxPower;
+}
+
 void Unit::SetMaxHealth(uint32 val)
 {
     if (!val)
@@ -16787,6 +16845,12 @@ void Unit::BuildValuesUpdate(uint8 updateType, ByteBuffer* data, Player* target)
                 cacheValue.posPointers.UnitFieldMaxHealthPos = int32(fieldBuffer.wpos());
                 fieldBuffer << m_uint32Values[UNIT_FIELD_MAXHEALTH];
             }
+            else if ((index >= UNIT_FIELD_POWER1 && index < UNIT_FIELD_POWER1 + MAX_POWERS) ||
+                     (index >= UNIT_FIELD_MAXPOWER1 && index < UNIT_FIELD_MAXPOWER1 + MAX_POWERS))
+            {
+                cacheValue.posPointers.other[index] = static_cast<uint32>(fieldBuffer.wpos());
+                fieldBuffer << m_uint32Values[index];
+            }
             else if (index == UNIT_FIELD_LEVEL)
             {
                 cacheValue.posPointers.UnitFieldLevelPos = int32(fieldBuffer.wpos());
@@ -16896,6 +16960,20 @@ void Unit::PatchValuesUpdate(ByteBuffer& valuesUpdateBuf, BuildValuesCachePosPoi
 
         if (posPointers.UnitFieldMaxHealthPos >= 0)
             valuesUpdateBuf.put(posPointers.UnitFieldMaxHealthPos, GetMaxHealthForTarget(target));
+    }
+
+    if (creature)
+    {
+        for (uint8 power = 0; power < MAX_POWERS; ++power)
+        {
+            uint16 powerIndex = UNIT_FIELD_POWER1 + power;
+            if (auto itr = posPointers.other.find(powerIndex); itr != posPointers.other.end())
+                valuesUpdateBuf.put(itr->second, GetPowerForTarget(target, Powers(power)));
+
+            uint16 maxPowerIndex = UNIT_FIELD_MAXPOWER1 + power;
+            if (auto itr = posPointers.other.find(maxPowerIndex); itr != posPointers.other.end())
+                valuesUpdateBuf.put(itr->second, GetMaxPowerForTarget(target, Powers(power)));
+        }
     }
 
     // UNIT_FIELD_DISPLAYID

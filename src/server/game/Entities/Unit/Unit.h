@@ -1194,6 +1194,8 @@ public:
 
     [[nodiscard]] uint32 GetPower(Powers power) const { return GetUInt32Value(static_cast<uint16>(UNIT_FIELD_POWER1) + power); }
     [[nodiscard]] uint32 GetMaxPower(Powers power) const { return GetUInt32Value(static_cast<uint16>(UNIT_FIELD_MAXPOWER1) + power); }
+    [[nodiscard]] uint32 GetPowerForTarget(Unit const* target, Powers power) const;
+    [[nodiscard]] uint32 GetMaxPowerForTarget(Unit const* target, Powers power) const;
     [[nodiscard]] float GetPowerPct(Powers power) const { return GetMaxPower(power) ? 100.f * GetPower(power) / GetMaxPower(power) : 0.0f; }
     [[nodiscard]] uint32 GetCreatePowers(Powers power) const;
 
