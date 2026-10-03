@@ -6645,6 +6645,15 @@ void Unit::SendSpellNonMeleeReflectLog(SpellNonMeleeDamage* log, Unit* attacker)
     // If we are in cheat mode we swap absorb with damage and set damage to 0, this way we can still debug damage but our HP bar will not drop
     uint32 damage = log->damage;
     uint32 absorb = log->absorb;
+    uint32 resist = log->resist;
+    uint32 blocked = log->blocked;
+    if (log->scaled && log->scaledBeforeAbsorb && log->ratio > 0.0f)
+    {
+        damage = uint32(std::lround(float(damage) / log->ratio));
+        absorb = uint32(std::lround(float(absorb) / log->ratio));
+        resist = uint32(std::lround(float(resist) / log->ratio));
+        blocked = uint32(std::lround(float(blocked) / log->ratio));
+    }
     if (log->target->IsPlayer() && log->target->ToPlayer()->GetCommandStatus(CHEAT_GOD))
     {
         absorb = damage;
@@ -6654,14 +6663,14 @@ void Unit::SendSpellNonMeleeReflectLog(SpellNonMeleeDamage* log, Unit* attacker)
     data << attacker->GetPackGUID();
     data << uint32(log->spellInfo->Id);
     data << uint32(damage);                                 // damage amount
-    int32 overkill = damage - log->target->GetHealth();
+    int32 overkill = damage - log->target->GetHealthForTarget(attacker);
     data << uint32(overkill > 0 ? overkill : 0);            // overkill
     data << uint8 (log->schoolMask);                        // damage school
     data << uint32(absorb);                                 // AbsorbedDamage
-    data << uint32(log->resist);                            // resist
+    data << uint32(resist);                                 // resist
     data << uint8 (log->physicalLog);                       // if 1, then client show spell name (example: %s's ranged shot hit %s for %u school or %s suffers %u school damage from %s's spell_name
     data << uint8 (log->unused);                            // unused
-    data << uint32(log->blocked);                           // blocked
+    data << uint32(blocked);                                // blocked
     data << uint32(log->HitInfo);
     data << uint8 (0);                                      // flag to use extend data
     ToPlayer()->SendDirectMessage(&data);
@@ -6673,6 +6682,15 @@ void Unit::SendSpellNonMeleeDamageLog(SpellNonMeleeDamage* log)
     //IF we are in cheat mode we swap absorb with damage and set damage to 0, this way we can still debug damage but our hp bar will not drop
     uint32 damage = log->damage;
     uint32 absorb = log->absorb;
+    uint32 resist = log->resist;
+    uint32 blocked = log->blocked;
+    if (log->scaled && log->scaledBeforeAbsorb && log->ratio > 0.0f)
+    {
+        damage = uint32(std::lround(float(damage) / log->ratio));
+        absorb = uint32(std::lround(float(absorb) / log->ratio));
+        resist = uint32(std::lround(float(resist) / log->ratio));
+        blocked = uint32(std::lround(float(blocked) / log->ratio));
+    }
     if (log->target->IsPlayer() && log->target->ToPlayer()->GetCommandStatus(CHEAT_GOD))
     {
         absorb = damage;
@@ -6682,14 +6700,14 @@ void Unit::SendSpellNonMeleeDamageLog(SpellNonMeleeDamage* log)
     data << log->attacker->GetPackGUID();
     data << uint32(log->spellInfo->Id);
     data << uint32(damage);                                 // damage amount
-    int32 overkill = damage - log->target->GetHealth();
+    int32 overkill = damage - log->target->GetHealthForTarget(log->attacker);
     data << uint32(overkill > 0 ? overkill : 0);            // overkill
     data << uint8 (log->schoolMask);                        // damage school
     data << uint32(absorb);                                 // AbsorbedDamage
-    data << uint32(log->resist);                            // resist
+    data << uint32(resist);                                 // resist
     data << uint8 (log->physicalLog);                       // if 1, then client show spell name (example: %s's ranged shot hit %s for %u school or %s suffers %u school damage from %s's spell_name
     data << uint8 (log->unused);                            // unused
-    data << uint32(log->blocked);                           // blocked
+    data << uint32(blocked);                                // blocked
     data << uint32(log->HitInfo);
     data << uint8(log->HitInfo & (SPELL_HIT_TYPE_CRIT_DEBUG | SPELL_HIT_TYPE_HIT_DEBUG | SPELL_HIT_TYPE_ATTACK_TABLE_DEBUG));
     //if (log->HitInfo & SPELL_HIT_TYPE_CRIT_DEBUG)
@@ -6850,17 +6868,28 @@ void Unit::SendAttackStateUpdate(CalcDamageInfo* damageInfo)
 
     uint32 tmpDamage[MAX_ITEM_PROTO_DAMAGES] = { };
     uint32 tmpAbsorb[MAX_ITEM_PROTO_DAMAGES] = { };
+    uint32 tmpResist[MAX_ITEM_PROTO_DAMAGES] = { };
+    uint32 tmpBlocked = damageInfo->blocked_amount;
     for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
     {
         //IF we are in cheat mode we swap absorb with damage and set damage to 0, this way we can still debug damage but our hp bar will not drop
         tmpDamage[i] = damageInfo->damages[i].damage;
         tmpAbsorb[i] = damageInfo->damages[i].absorb;
+        tmpResist[i] = damageInfo->damages[i].resist;
+        if (damageInfo->scaled && damageInfo->scaledBeforeAbsorb && damageInfo->ratio > 0.0f)
+        {
+            tmpDamage[i] = uint32(std::lround(float(tmpDamage[i]) / damageInfo->ratio));
+            tmpAbsorb[i] = uint32(std::lround(float(tmpAbsorb[i]) / damageInfo->ratio));
+            tmpResist[i] = uint32(std::lround(float(tmpResist[i]) / damageInfo->ratio));
+        }
         if (damageInfo->target->IsPlayer() && damageInfo->target->ToPlayer()->GetCommandStatus(CHEAT_GOD))
         {
             tmpAbsorb[i] = tmpDamage[i];
             tmpDamage[i] = 0;
         }
     }
+    if (damageInfo->scaled && damageInfo->scaledBeforeAbsorb && damageInfo->ratio > 0.0f)
+        tmpBlocked = uint32(std::lround(float(tmpBlocked) / damageInfo->ratio));
 
     uint32 count = 1;
     if (tmpDamage[1] || tmpAbsorb[1] || damageInfo->damages[1].resist)
@@ -6874,7 +6903,7 @@ void Unit::SendAttackStateUpdate(CalcDamageInfo* damageInfo)
     data << damageInfo->attacker->GetPackGUID();
     data << damageInfo->target->GetPackGUID();
     data << uint32(tmpDamage[0] + tmpDamage[1]);                    // Full damage
-    int32 overkill = tmpDamage[0] + tmpDamage[1] - damageInfo->target->GetHealth();
+    int32 overkill = tmpDamage[0] + tmpDamage[1] - damageInfo->target->GetHealthForTarget(damageInfo->attacker);
     data << uint32(overkill < 0 ? 0 : overkill);                    // Overkill
     data << uint8(count);                                           // Sub damage count
 
@@ -6897,7 +6926,7 @@ void Unit::SendAttackStateUpdate(CalcDamageInfo* damageInfo)
     {
         for (uint32 i = 0; i < count; ++i)
         {
-            data << uint32(damageInfo->damages[i].resist);          // Resist
+            data << uint32(tmpResist[i]);                           // Resist
         }
     }
 
@@ -6906,7 +6935,7 @@ void Unit::SendAttackStateUpdate(CalcDamageInfo* damageInfo)
     data << uint32(0);  // Melee spellid
 
     if (damageInfo->HitInfo & HITINFO_BLOCK)
-        data << uint32(damageInfo->blocked_amount);
+        data << uint32(tmpBlocked);
 
     if (damageInfo->HitInfo & HITINFO_RAGE_GAIN)
         data << uint32(0);
