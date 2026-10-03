@@ -11390,6 +11390,30 @@ CreatureBaseStats const* ObjectMgr::GetCreatureBaseStats(uint8 level, uint8 unit
     return &defStats;
 }
 
+void ObjectMgr::SetCreatureBaseStatsForTest(uint8 level, uint8 unitClass, CreatureBaseStats const& stats)
+{
+    _creatureBaseStatsStore[MAKE_PAIR16(level, unitClass)] = stats;
+}
+
+void ObjectMgr::RemoveCreatureBaseStatsForTest(uint8 level, uint8 unitClass)
+{
+    _creatureBaseStatsStore.erase(MAKE_PAIR16(level, unitClass));
+}
+
+void ObjectMgr::SetPlayerClassLevelInfoForTest(uint8 unitClass, uint8 level, uint32 baseHealth, uint32 baseMana)
+{
+    ASSERT(unitClass < MAX_CLASSES && level > 0);
+
+    if (!_playerClassInfo[unitClass])
+        _playerClassInfo[unitClass] = new PlayerClassInfo();
+
+    if (!_playerClassInfo[unitClass]->levelInfo)
+        _playerClassInfo[unitClass]->levelInfo = new PlayerClassLevelInfo[DEFAULT_MAX_LEVEL];
+
+    _playerClassInfo[unitClass]->levelInfo[level - 1].basehealth = baseHealth;
+    _playerClassInfo[unitClass]->levelInfo[level - 1].basemana = baseMana;
+}
+
 void ObjectMgr::LoadCreatureClassLevelStats()
 {
     uint32 oldMSTime = getMSTime();

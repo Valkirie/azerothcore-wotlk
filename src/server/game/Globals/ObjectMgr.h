@@ -1170,6 +1170,9 @@ public:
     }
 
     CreatureBaseStats const* GetCreatureBaseStats(uint8 level, uint8 unitClass);
+    void SetCreatureBaseStatsForTest(uint8 level, uint8 unitClass, CreatureBaseStats const& stats);
+    void RemoveCreatureBaseStatsForTest(uint8 level, uint8 unitClass);
+    void SetPlayerClassLevelInfoForTest(uint8 unitClass, uint8 level, uint32 baseHealth, uint32 baseMana);
 
     void SetHighestGuids();
 

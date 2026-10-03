@@ -3,6 +3,10 @@
 # download and unpack googletest at configure time
 
 macro(fetch_googletest _download_module_path _download_root)
+    if(MSVC)
+        set(gtest_force_shared_crt ON CACHE BOOL "Use the shared MSVC runtime for GoogleTest" FORCE)
+    endif()
+
     set(GOOGLETEST_DOWNLOAD_ROOT ${_download_root})
     configure_file(
             ${_download_module_path}/googletest-download.cmake
