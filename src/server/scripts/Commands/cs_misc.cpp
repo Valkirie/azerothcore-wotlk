@@ -633,6 +633,18 @@ public:
                                  cell.GridX(), cell.GridY(), cell.CellX(), cell.CellY(), object->GetInstanceId(),
                                  zoneX, zoneY, groundZ, floorZ, haveMap, haveVMap, haveMMAP);
 
+        if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(areaId, zoneId))
+        {
+            handler->PSendSysMessage("Zone scaling: {} (ID: {}, matched by {}), level range: {}-{}, areaFlags: {} (0x{:08X}), low-level: {}",
+                zoneFlex->areaName, zoneFlex->areaId, zoneFlex->areaId == areaId ? "area" : "zone",
+                zoneFlex->LevelRangeMin, zoneFlex->LevelRangeMax, zoneFlex->areaFlags, zoneFlex->areaFlags,
+                zoneFlex->IsLowLevel() ? "yes" : "no");
+        }
+        else
+        {
+            handler->PSendSysMessage("Zone scaling: no configuration found");
+        }
+
         LiquidData const& liquidData = object->GetLiquidData();
 
         if (liquidData.Status)
