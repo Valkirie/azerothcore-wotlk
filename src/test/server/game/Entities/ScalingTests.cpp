@@ -9,9 +9,12 @@
 
 #include "IntegrationTestFixture.h"
 #include "ObjectMgr.h"
+#include "SpellInfoTestHelper.h"
+#include "SpellAuraEffects.h"
 #include "Unit.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include <array>
 #include <iostream>
 #include <string_view>
 
@@ -21,6 +24,9 @@ constexpr uint8 TestLowLevel = 20;
 constexpr uint8 TestMidLevel = 30;
 constexpr uint8 TestHighLevel = 40;
 constexpr uint32 TestNativeValue = 400;
+constexpr uint32 TestAbsorbSpellId = 990001;
+constexpr uint32 TestManaShieldSpellId = 990002;
+constexpr uint32 TestAreaDotSpellId = 990003;
 
 class ScalingTests : public IntegrationTestFixture
 {
@@ -114,6 +120,18 @@ protected:
         return result;
     }
 
+    uint32 ExpectScaledDamage(Unit* attacker, Unit* defender, uint32 nativeDamage, uint32 expectedScaledDamage)
+    {
+        std::cout << "  [COMBATANTS] attacker=" << UnitTypeName(attacker)
+                  << " level=" << uint32(attacker->GetLevel())
+                  << ", defender=" << UnitTypeName(defender)
+                  << " level=" << uint32(defender->GetLevel()) << '\n';
+        float scaledDamage = Scale(attacker, defender, float(nativeDamage));
+        Report("pre-mitigation scaled damage", float(nativeDamage), float(expectedScaledDamage), scaledDamage);
+        EXPECT_FLOAT_EQ(scaledDamage, float(expectedScaledDamage));
+        return uint32(std::lround(scaledDamage));
+    }
+
     float RoundTrip(Unit* source, Unit* target, float value, SpellType type)
     {
         float scaled = Scale(source, target, value, type);
@@ -162,6 +180,40 @@ protected:
         float scaled = Scale(controlled, target, 100.0f);
         Report("controlled-unit damage", 100.0f, 400.0f, scaled);
         EXPECT_FLOAT_EQ(scaled, 400.0f);
+    }
+
+    std::unique_ptr<SpellInfo> BuildAbsorbSpell(uint32 id, AuraType auraType, int32 amount, float manaMultiplier = 0.0f,
+        SpellSchoolMask schoolMask = SPELL_SCHOOL_MASK_FROST)
+    {
+        return SpellInfoBuilder()
+            .WithId(id)
+            .WithSchoolMask(schoolMask)
+            .WithEffect(EFFECT_0, SPELL_EFFECT_APPLY_AURA, auraType)
+            .WithEffectBasePoints(EFFECT_0, amount)
+            .WithEffectMiscValue(EFFECT_0, schoolMask)
+            .WithEffectValueMultiplier(EFFECT_0, manaMultiplier)
+            .BuildUnique();
+    }
+
+    std::unique_ptr<SpellInfo> BuildAreaDotSpell(int32 tickDamage)
+    {
+        return SpellInfoBuilder()
+            .WithId(TestAreaDotSpellId)
+            .WithSchoolMask(SPELL_SCHOOL_MASK_SHADOW)
+            .WithDmgClass(SPELL_DAMAGE_CLASS_MAGIC)
+            .WithEffect(EFFECT_0, SPELL_EFFECT_APPLY_AURA, SPELL_AURA_PERIODIC_DAMAGE)
+            .WithEffectBasePoints(EFFECT_0, tickDamage)
+            .WithEffectImplicitTargets(EFFECT_0, TARGET_UNIT_CASTER, TARGET_UNIT_SRC_AREA_ENEMY)
+            .BuildUnique();
+    }
+
+    DamageInfo ResolveAbsorb(Unit* attacker, Unit* victim, uint32 damage, SpellInfo const* spellInfo)
+    {
+        DamageInfo result(attacker, victim, damage, spellInfo, SPELL_SCHOOL_MASK_FROST, SPELL_DIRECT_DAMAGE);
+        Unit::CalcAbsorbResist(result);
+        std::cout << "  [ABSORB] incoming=" << damage << ", absorbed=" << result.GetAbsorb()
+                  << ", remaining=" << result.GetDamage() << '\n';
+        return result;
     }
 };
 
@@ -316,6 +368,131 @@ TEST_F(ScalingTests, Mitigation_Absorb)
     damage.AbsorbDamage(125);
     EXPECT_EQ(damage.GetDamage(), 275u);
     EXPECT_EQ(damage.GetAbsorb(), 125u);
+}
+
+TEST_F(ScalingTests, AbsorbShield_PartialDamageUsesRealAura)
+{
+    TestCreature* attacker = CreateCreature(100, TestHighLevel);
+    TestPlayer* victim = CreatePlayer(1, TestLowLevel);
+    std::unique_ptr<SpellInfo> shield = BuildAbsorbSpell(TestAbsorbSpellId, SPELL_AURA_SCHOOL_ABSORB, 20);
+    Aura* aura = victim->AddAura(shield.get(), 1 << EFFECT_0, victim);
+    ASSERT_NE(aura, nullptr);
+
+    uint32 scaledDamage = ExpectScaledDamage(attacker, victim, 100, 25);
+    DamageInfo result = ResolveAbsorb(attacker, victim, scaledDamage, shield.get());
+    Report("partial absorb", scaledDamage, 20u, result.GetAbsorb());
+    Report("damage after shield", scaledDamage, 5u, result.GetDamage());
+    EXPECT_EQ(result.GetAbsorb(), 20u);
+    EXPECT_EQ(result.GetDamage(), 5u);
+    EXPECT_FALSE(victim->HasAura(TestAbsorbSpellId));
+}
+
+TEST_F(ScalingTests, AbsorbShield_FullDamageLeavesCapacity)
+{
+    TestCreature* attacker = CreateCreature(100, TestHighLevel);
+    TestPlayer* victim = CreatePlayer(1, TestLowLevel);
+    std::unique_ptr<SpellInfo> shield = BuildAbsorbSpell(TestAbsorbSpellId, SPELL_AURA_SCHOOL_ABSORB, 50);
+    Aura* aura = victim->AddAura(shield.get(), 1 << EFFECT_0, victim);
+    ASSERT_NE(aura, nullptr);
+
+    uint32 scaledDamage = ExpectScaledDamage(attacker, victim, 100, 25);
+    DamageInfo result = ResolveAbsorb(attacker, victim, scaledDamage, shield.get());
+    Report("full absorb", scaledDamage, 25u, result.GetAbsorb());
+    EXPECT_EQ(result.GetDamage(), 0u);
+    EXPECT_EQ(result.GetAbsorb(), 25u);
+    ASSERT_TRUE(victim->HasAura(TestAbsorbSpellId));
+    EXPECT_EQ(aura->GetEffect(EFFECT_0)->GetAmount(), 25);
+    victim->RemoveAurasDueToSpell(TestAbsorbSpellId);
+}
+
+TEST_F(ScalingTests, ManaShield_ConsumesManaAndPartiallyAbsorbs)
+{
+    TestCreature* attacker = CreateCreature(100, TestHighLevel);
+    TestPlayer* victim = CreatePlayer(1, TestLowLevel);
+    victim->SetMaxPower(POWER_MANA, 1000);
+    victim->SetPower(POWER_MANA, 20);
+    std::unique_ptr<SpellInfo> shield = BuildAbsorbSpell(TestManaShieldSpellId, SPELL_AURA_MANA_SHIELD, 50, 2.0f);
+    ASSERT_NE(victim->AddAura(shield.get(), 1 << EFFECT_0, victim), nullptr);
+
+    uint32 scaledDamage = ExpectScaledDamage(attacker, victim, 100, 25);
+    DamageInfo result = ResolveAbsorb(attacker, victim, scaledDamage, shield.get());
+    Report("mana shield absorbed", scaledDamage, 10u, result.GetAbsorb());
+    Report("mana after shield", 20u, 0u, victim->GetPower(POWER_MANA));
+    EXPECT_EQ(result.GetAbsorb(), 10u);
+    EXPECT_EQ(result.GetDamage(), 15u);
+    EXPECT_EQ(victim->GetPower(POWER_MANA), 0u);
+    victim->RemoveAurasDueToSpell(TestManaShieldSpellId);
+}
+
+TEST_F(ScalingTests, AreaDamage_MultipleTargetsScaleIndependently)
+{
+    TestPlayer* caster = CreatePlayer(1, TestLowLevel);
+    TestCreature* first = CreateCreature(100, TestHighLevel);
+    TestCreature* second = CreateCreature(101, TestHighLevel);
+    TestCreature* third = CreateCreature(102, TestHighLevel);
+    std::array<TestCreature*, 3> targets = { first, second, third };
+
+    for (TestCreature* target : targets)
+    {
+        uint32 scaledDamage = ExpectScaledDamage(caster, target, 100, 400);
+        Report("AoE target damage", 100u, 400u, scaledDamage);
+        EXPECT_EQ(scaledDamage, 400u);
+    }
+}
+
+TEST_F(ScalingTests, AreaDot_AppliesAndTicksEveryTarget)
+{
+    TestPlayer* caster = CreatePlayer(1, TestLowLevel);
+    TestCreature* first = CreateCreature(100, TestHighLevel);
+    TestCreature* second = CreateCreature(101, TestHighLevel);
+    std::unique_ptr<SpellInfo> areaDot = BuildAreaDotSpell(100);
+    ASSERT_TRUE(areaDot->Effects[EFFECT_0].IsTargetingArea());
+
+    for (TestCreature* target : { first, second })
+    {
+        uint32 expectedTickDamage = ExpectScaledDamage(caster, target, 100, 400);
+        Aura* aura = caster->AddAura(areaDot.get(), 1 << EFFECT_0, target);
+        ASSERT_NE(aura, nullptr);
+        AuraEffect const* effect = aura->GetEffect(EFFECT_0);
+        ASSERT_NE(effect, nullptr);
+        uint32 healthBefore = target->GetHealth();
+        effect->HandlePeriodicDamageAurasTick(target, caster);
+        uint32 actualDamage = healthBefore - target->GetHealth();
+        Report("AoE DoT target tick", 100u, expectedTickDamage, actualDamage);
+        EXPECT_EQ(actualDamage, expectedTickDamage);
+        target->RemoveAurasDueToSpell(TestAreaDotSpellId);
+    }
+}
+
+TEST_F(ScalingTests, AreaDot_TargetAbsorbIsIndependent)
+{
+    TestPlayer* caster = CreatePlayer(1, TestLowLevel);
+    TestCreature* shielded = CreateCreature(100, TestHighLevel);
+    TestCreature* unshielded = CreateCreature(101, TestHighLevel);
+    std::unique_ptr<SpellInfo> areaDot = BuildAreaDotSpell(100);
+    std::unique_ptr<SpellInfo> shield = BuildAbsorbSpell(TestAbsorbSpellId, SPELL_AURA_SCHOOL_ABSORB, 150, 0.0f,
+        SPELL_SCHOOL_MASK_SHADOW);
+    ASSERT_NE(shielded->AddAura(shield.get(), 1 << EFFECT_0, shielded), nullptr);
+
+    Aura* shieldedAura = caster->AddAura(areaDot.get(), 1 << EFFECT_0, shielded);
+    Aura* unshieldedAura = caster->AddAura(areaDot.get(), 1 << EFFECT_0, unshielded);
+    ASSERT_NE(shieldedAura, nullptr);
+    ASSERT_NE(unshieldedAura, nullptr);
+    uint32 shieldedScaledDamage = ExpectScaledDamage(caster, shielded, 100, 400);
+    uint32 unshieldedScaledDamage = ExpectScaledDamage(caster, unshielded, 100, 400);
+    uint32 shieldedBefore = shielded->GetHealth();
+    uint32 unshieldedBefore = unshielded->GetHealth();
+    shieldedAura->GetEffect(EFFECT_0)->HandlePeriodicDamageAurasTick(shielded, caster);
+    unshieldedAura->GetEffect(EFFECT_0)->HandlePeriodicDamageAurasTick(unshielded, caster);
+    uint32 shieldedDamage = shieldedBefore - shielded->GetHealth();
+    uint32 unshieldedDamage = unshieldedBefore - unshielded->GetHealth();
+    Report("shielded AoE DoT target", shieldedScaledDamage, 250u, shieldedDamage);
+    Report("unshielded AoE DoT target", unshieldedScaledDamage, unshieldedScaledDamage, unshieldedDamage);
+    EXPECT_EQ(shieldedDamage, shieldedScaledDamage - 150u);
+    EXPECT_EQ(unshieldedDamage, unshieldedScaledDamage);
+    shielded->RemoveAurasDueToSpell(TestAbsorbSpellId);
+    shielded->RemoveAurasDueToSpell(TestAreaDotSpellId);
+    unshielded->RemoveAurasDueToSpell(TestAreaDotSpellId);
 }
 
 TEST_F(ScalingTests, Mitigation_Modifiers)
