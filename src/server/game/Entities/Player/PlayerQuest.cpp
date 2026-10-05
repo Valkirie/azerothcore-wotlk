@@ -484,12 +484,17 @@ bool Player::CanRewardQuest(Quest const* quest, uint32 reward, bool msg)
         return false;
     }
 
+    bool const rewarded = IsQuestRewarded(quest->GetQuestId()) && !quest->IsDFQuest() && !(quest->IsDaily() || quest->IsWeekly() || quest->IsMonthly());
+    bool const rewardWithMoney = GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(this);
+    uint32 questXp = rewarded || rewardWithMoney ? 0 : CalculateQuestRewardXP(quest);
+    uint8 rewardLevel = CalculateQuestRewardLevel(questXp);
+
     ItemPosCountVec dest;
     if (quest->GetRewChoiceItemsCount() > 0)
     {
         if (quest->RewardChoiceItemId[reward])
         {
-            uint32 itemId = LootStore::LoadScaledLoot(quest->RewardChoiceItemId[reward], this);
+            uint32 itemId = LootStore::LoadScaledLoot(quest->RewardChoiceItemId[reward], rewardLevel, this);
             InventoryResult res = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardChoiceItemCount[reward]);
             if (res != EQUIP_ERR_OK)
             {
@@ -505,7 +510,7 @@ bool Player::CanRewardQuest(Quest const* quest, uint32 reward, bool msg)
         {
             if (quest->RewardItemId[i])
             {
-                uint32 itemId = LootStore::LoadScaledLoot(quest->RewardItemId[i], this);
+                uint32 itemId = LootStore::LoadScaledLoot(quest->RewardItemId[i], rewardLevel, this);
                 InventoryResult res = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardItemIdCount[i]);
                 if (res != EQUIP_ERR_OK)
                 {
@@ -681,6 +686,12 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     SetMustDelayTeleport(true);
 
     uint32 quest_id = quest->GetQuestId();
+    bool const rewarded = IsQuestRewarded(quest_id) && !quest->IsDFQuest() && !(quest->IsDaily() || quest->IsWeekly() || quest->IsMonthly());
+    bool const rewardWithMoney = GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(this);
+
+    // Repeatable quests (not time-based reset ones) should not give XP on subsequent completions
+    uint32 XP = rewarded ? 0 : CalculateQuestRewardXP(quest);
+    uint8 rewardLevel = CalculateQuestRewardLevel(rewardWithMoney ? 0 : XP);
 
     for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
     {
@@ -711,7 +722,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     {
         if (uint32 itemId = quest->RewardChoiceItemId[reward])
         {
-            itemId = LootStore::LoadScaledLoot(itemId, this);
+            itemId = LootStore::LoadScaledLoot(itemId, rewardLevel, this);
             ItemPosCountVec dest;
             if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardChoiceItemCount[reward]) == EQUIP_ERR_OK)
             {
@@ -733,7 +744,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
         {
             if (uint32 itemId = quest->RewardItemId[i])
             {
-                itemId = LootStore::LoadScaledLoot(itemId, this);
+                itemId = LootStore::LoadScaledLoot(itemId, rewardLevel, this);
                 ItemPosCountVec dest;
                 if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardItemIdCount[i]) == EQUIP_ERR_OK)
                 {
@@ -760,13 +771,6 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     if (log_slot < MAX_QUEST_LOG_SIZE)
         SetQuestSlot(log_slot, 0);
 
-    bool const rewarded = IsQuestRewarded(quest_id) && !quest->IsDFQuest() && !(quest->IsDaily() || quest->IsWeekly() || quest->IsMonthly());
-
-    // Repeatable quests (not time-based reset ones) should not give XP on subsequent completions
-    uint32 XP = rewarded ? 0 : CalculateQuestRewardXP(quest);
-
-    sScriptMgr->OnPlayerQuestComputeXP(this, quest, XP);
-    bool const rewardWithMoney = GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(this);
     int32 moneyRew = 0;
     if (rewardWithMoney)
     {
@@ -1487,6 +1491,8 @@ uint32 Player::CalculateQuestRewardXP(Quest const* quest)
 
     // handle SPELL_AURA_MOD_XP_QUEST_PCT auras
     xp *= GetTotalAuraMultiplier(SPELL_AURA_MOD_XP_QUEST_PCT);
+
+    sScriptMgr->OnPlayerQuestComputeXP(this, quest, xp);
 
     return xp;
 }

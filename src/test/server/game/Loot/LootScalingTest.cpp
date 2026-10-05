@@ -223,6 +223,19 @@ TEST_F(LootScalingTest, SoloPlainItemScalesToPlayerLevel)
 	EXPECT_EQ(item.randomSuffix, 0u);
 }
 
+TEST_F(LootScalingTest, QuestRewardScalesToLevelReachedByRewardXP)
+{
+	ON_CALL(*GetWorldMock(), getIntConfig(CONFIG_MAX_PLAYER_LEVEL)).WillByDefault(::testing::Return(HighLevel));
+	TestPlayer* player = CreatePlayer(1, HighLevel - 1);
+	player->SetUInt32Value(PLAYER_XP, 900);
+	player->SetUInt32Value(PLAYER_NEXT_LEVEL_XP, 1000);
+
+	uint8 rewardLevel = player->CalculateQuestRewardLevel(100);
+
+	EXPECT_EQ(rewardLevel, HighLevel);
+	EXPECT_EQ(LootStore::LoadScaledLoot(PlainItemId, rewardLevel, player), ScaledItemId(PlainItemId, HighLevel));
+}
+
 TEST_F(LootScalingTest, SoloRandomPropertyScalesWithinGeneratedFamily)
 {
 	TestPlayer* player = CreatePlayer(1, LowLevel);
