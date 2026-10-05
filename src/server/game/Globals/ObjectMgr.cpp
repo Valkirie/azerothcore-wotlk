@@ -3936,6 +3936,23 @@ ItemTemplate const* ObjectMgr::GetItemTemplate(uint32 entry)
     return entry < _itemTemplateStoreFast.size() ? _itemTemplateStoreFast[entry] : nullptr;
 }
 
+void ObjectMgr::SetItemTemplateForTest(ItemTemplate const& itemTemplate)
+{
+    _itemTemplateStore[itemTemplate.ItemId] = itemTemplate;
+    if (_itemTemplateStoreFast.size() <= itemTemplate.ItemId)
+        _itemTemplateStoreFast.resize(itemTemplate.ItemId + 1, nullptr);
+
+    for (auto& [entry, storedTemplate] : _itemTemplateStore)
+        _itemTemplateStoreFast[entry] = &storedTemplate;
+}
+
+void ObjectMgr::RemoveItemTemplateForTest(uint32 entry)
+{
+    _itemTemplateStore.erase(entry);
+    if (entry < _itemTemplateStoreFast.size())
+        _itemTemplateStoreFast[entry] = nullptr;
+}
+
 void ObjectMgr::LoadItemSetNameLocales()
 {
     uint32 oldMSTime = getMSTime();

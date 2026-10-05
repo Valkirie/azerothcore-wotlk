@@ -824,6 +824,8 @@ public:
     ItemTemplate const* GetItemTemplate(uint32 entry);
     [[nodiscard]] ItemTemplateContainer const* GetItemTemplateStore() const { return &_itemTemplateStore; }
     [[nodiscard]] std::vector<ItemTemplate*> const* GetItemTemplateStoreFast() const { return &_itemTemplateStoreFast; }
+    void SetItemTemplateForTest(ItemTemplate const& itemTemplate);
+    void RemoveItemTemplateForTest(uint32 entry);
 
     uint32 GetModelForTotem(SummonSlot totemSlot, Races race) const;
 

@@ -169,6 +169,7 @@ public:
     };
     typedef std::map<ObjectGuid, ItemInfo> PlayerItemInfo;
     mutable PlayerItemInfo playerItemInfo;
+    ItemInfo const& GetItemInfoForPlayer(Player* player) const;
     typedef std::map<ObjectGuid, RollVote> PlayerVote;
     PlayerVote playerVote;                              //vote position correspond with player position (in group)
     uint8 totalPlayersRolling;

@@ -200,6 +200,22 @@ void GetItemEnchantFamilies(uint32 enchantmentId, uint32& propertyFamily, uint32
         suffixFamily = suffixItr->second;
 }
 
+void AddRandomEnchantmentForTest(int32 entry, uint32 enchantmentId, uint32 propertyFamily, uint32 suffixFamily)
+{
+    RandomItemEnch[entry].emplace_back(enchantmentId, 100.0f, propertyFamily, suffixFamily);
+    if (propertyFamily)
+        RandomEnchPropertyValues[enchantmentId] = propertyFamily;
+    if (suffixFamily)
+        RandomEnchSuffixValues[enchantmentId] = suffixFamily;
+}
+
+void RemoveRandomEnchantmentForTest(int32 entry, uint32 enchantmentId)
+{
+    RandomItemEnch.erase(entry);
+    RandomEnchPropertyValues.erase(enchantmentId);
+    RandomEnchSuffixValues.erase(enchantmentId);
+}
+
 void LoadRochenoireRandomEnchantmentsTable()
 {
     uint32 oldMSTime = getMSTime();

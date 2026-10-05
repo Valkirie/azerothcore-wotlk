@@ -64,21 +64,21 @@ Loot* Roll::getLoot()
     return getTarget();
 }
 
-static Roll::ItemInfo const& GetRollItemInfoForPlayer(Roll const& roll, Player* player)
+Roll::ItemInfo const& Roll::GetItemInfoForPlayer(Player* player) const
 {
-    auto itr = roll.playerItemInfo.find(player->GetGUID());
-    if (itr != roll.playerItemInfo.end())
+    auto itr = playerItemInfo.find(player->GetGUID());
+    if (itr != playerItemInfo.end())
         return itr->second;
 
-    Roll::ItemInfo itemInfo = { roll.itemid, roll.itemRandomSuffix, roll.itemRandomPropId };
-    Loot* loot = const_cast<Roll&>(roll).getLoot();
+    ItemInfo itemInfo = { itemid, itemRandomSuffix, itemRandomPropId };
+    Loot* loot = const_cast<Roll*>(this)->getLoot();
     if (loot)
     {
-        LootItem* lootItem = roll.itemSlot >= loot->items.size() ? &loot->quest_items[roll.itemSlot - loot->items.size()] : &loot->items[roll.itemSlot];
+        LootItem* lootItem = itemSlot >= loot->items.size() ? &loot->quest_items[itemSlot - loot->items.size()] : &loot->items[itemSlot];
         lootItem->GetScaledValuesForPlayer(player->getAreaZoneLevel(), player, itemInfo.itemId, itemInfo.randomSuffix, itemInfo.randomPropertyId);
     }
 
-    return roll.playerItemInfo.emplace(player->GetGUID(), itemInfo).first->second;
+    return playerItemInfo.emplace(player->GetGUID(), itemInfo).first->second;
 }
 
 static void SendRollWonItemViaMail(Player* player, LootItem const* lootItem, Roll::ItemInfo const& itemInfo)
@@ -1007,7 +1007,7 @@ void Group::SendLootStartRollToPlayer(uint32 countDown, uint32 mapId, Player* p,
     data << r.itemGUID;                                     // guid of rolled item
     data << uint32(mapId);                                  // 3.3.3 mapid
     data << uint32(r.itemSlot);                             // itemslot
-    Roll::ItemInfo const& itemInfo = GetRollItemInfoForPlayer(r, p);
+    Roll::ItemInfo const& itemInfo = r.GetItemInfoForPlayer(p);
 
     data << itemInfo.itemId;                                 // the itemEntryId for the item that shall be rolled for
     data << itemInfo.randomSuffix;                            // randomSuffix
@@ -1032,7 +1032,7 @@ void Group::SendLootRoll(ObjectGuid sourceGuid, ObjectGuid targetGuid, uint8 rol
 
         if (itr->second != NOT_VALID)
         {
-            Roll::ItemInfo const& itemInfo = GetRollItemInfoForPlayer(roll, p);
+            Roll::ItemInfo const& itemInfo = roll.GetItemInfoForPlayer(p);
             WorldPacket data(SMSG_LOOT_ROLL, (8 + 4 + 8 + 4 + 4 + 4 + 1 + 1 + 1));
             data << sourceGuid;                              // guid of the item rolled
             data << uint32(roll.itemSlot);                   // slot
@@ -1058,7 +1058,7 @@ void Group::SendLootRollWon(ObjectGuid sourceGuid, ObjectGuid targetGuid, uint8 
 
         if (itr->second != NOT_VALID)
         {
-            Roll::ItemInfo const& itemInfo = GetRollItemInfoForPlayer(roll, p);
+            Roll::ItemInfo const& itemInfo = roll.GetItemInfoForPlayer(p);
             WorldPacket data(SMSG_LOOT_ROLL_WON, (8 + 4 + 4 + 4 + 4 + 8 + 1 + 1));
             data << sourceGuid;                              // guid of the item rolled
             data << uint32(roll.itemSlot);                   // slot
@@ -1083,7 +1083,7 @@ void Group::SendLootAllPassed(Roll const& roll)
 
         if (itr->second != NOT_VALID)
         {
-            Roll::ItemInfo const& itemInfo = GetRollItemInfoForPlayer(roll, player);
+            Roll::ItemInfo const& itemInfo = roll.GetItemInfoForPlayer(player);
             WorldPacket data(SMSG_LOOT_ALL_PASSED, (8 + 4 + 4 + 4 + 4));
             data << roll.itemGUID;                             // Guid of the item rolled
             data << uint32(roll.itemSlot);                     // Item loot slot
@@ -1665,7 +1665,7 @@ void Group::CountTheRoll(Rolls::iterator rollI)
 
                     ItemPosCountVec dest;
                     LootItem* item = &(roll->itemSlot >= roll->getLoot()->items.size() ? roll->getLoot()->quest_items[roll->itemSlot - roll->getLoot()->items.size()] : roll->getLoot()->items[roll->itemSlot]);
-                    Roll::ItemInfo const& itemInfo = GetRollItemInfoForPlayer(*roll, player);
+                    Roll::ItemInfo const& itemInfo = roll->GetItemInfoForPlayer(player);
                     InventoryResult msg = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemInfo.itemId, item->count);
                     if (msg == EQUIP_ERR_OK)
                     {
@@ -1750,7 +1750,7 @@ void Group::CountTheRoll(Rolls::iterator rollI)
                     player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_ROLL_GREED_ON_LOOT, roll->itemid, maxresul);
 
                     LootItem* item = &(roll->itemSlot >= roll->getLoot()->items.size() ? roll->getLoot()->quest_items[roll->itemSlot - roll->getLoot()->items.size()] : roll->getLoot()->items[roll->itemSlot]);
-                    Roll::ItemInfo const& itemInfo = GetRollItemInfoForPlayer(*roll, player);
+                    Roll::ItemInfo const& itemInfo = roll->GetItemInfoForPlayer(player);
 
                     if (rollvote == GREED)
                     {
