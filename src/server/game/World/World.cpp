@@ -527,11 +527,13 @@ void World::SetInitialWorldSettings()
     LOG_INFO("server.loading", "Loading Disables");
     sDisableMgr->LoadDisables();                                  // must be before loading quests and items
 
-    LOG_INFO("server.loading", "Loading Items...");                         // must be after LoadRandomEnchantmentsTable and LoadPageTexts
-    sObjectMgr->LoadItemTemplates();
+    LOG_INFO("server.loading", "Loading Scaling Data...");
     sObjectMgr->LoadZoneScale();
     sObjectMgr->LoadLevelScaleCreature();
     sObjectMgr->LoadLevelScaleCreatureTemplate();
+
+    LOG_INFO("server.loading", "Loading Items...");                         // must be after LoadRandomEnchantmentsTable and LoadPageTexts
+    sObjectMgr->LoadItemTemplates();
     sObjectMgr->LoadLootConsumableScale();
     sObjectMgr->LoadItemsNotScaledFromVendors();
 
