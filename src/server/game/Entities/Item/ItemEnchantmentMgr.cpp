@@ -148,6 +148,58 @@ uint32 GetItemEnchantMod(int32 entry, uint32& propertyFamily, uint32& suffixFami
     return 0;
 }
 
+uint32 GetItemEnchantModForFamily(int32 entry, uint32 family, bool suffix)
+{
+    if (!entry || entry == -1)
+        return 0;
+
+    EnchantmentStore::const_iterator tab = RandomItemEnch.find(entry);
+    if (tab == RandomItemEnch.end())
+    {
+        LOG_ERROR("sql.sql", "Item RandomProperty / RandomSuffix id #{} used in `item_template` but it does not have records in `item_enchantment_template` table.", entry);
+        return 0;
+    }
+
+    float totalChance = 0.0f;
+    for (EnchStoreItem const& enchantment : tab->second)
+        if ((suffix ? enchantment.suffixFamily : enchantment.propertyFamily) == family)
+            totalChance += enchantment.chance;
+
+    if (totalChance <= 0.0f)
+    {
+        LOG_ERROR("sql.sql", "Item RandomProperty / RandomSuffix id #{} has no enchantment in family {}.", entry, family);
+        return 0;
+    }
+
+    double roll = rand_chance() * totalChance / 100.0f;
+    float cumulativeChance = 0.0f;
+    for (EnchStoreItem const& enchantment : tab->second)
+    {
+        if ((suffix ? enchantment.suffixFamily : enchantment.propertyFamily) != family)
+            continue;
+
+        cumulativeChance += enchantment.chance;
+        if (cumulativeChance > roll)
+            return enchantment.ench;
+    }
+
+    return 0;
+}
+
+void GetItemEnchantFamilies(uint32 enchantmentId, uint32& propertyFamily, uint32& suffixFamily)
+{
+    propertyFamily = 0;
+    suffixFamily = 0;
+
+    auto propertyItr = RandomEnchPropertyValues.find(enchantmentId);
+    if (propertyItr != RandomEnchPropertyValues.end())
+        propertyFamily = propertyItr->second;
+
+    auto suffixItr = RandomEnchSuffixValues.find(enchantmentId);
+    if (suffixItr != RandomEnchSuffixValues.end())
+        suffixFamily = suffixItr->second;
+}
+
 void LoadRochenoireRandomEnchantmentsTable()
 {
     uint32 oldMSTime = getMSTime();

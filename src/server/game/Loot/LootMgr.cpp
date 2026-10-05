@@ -501,15 +501,18 @@ void LootItem::ScaleForPlayer(uint32 playerLevel, Player* player)
     if (!player || loot_level == playerLevel)
         return;
 
-    uint32 originalItemId = itemid;
-    itemid = LootStore::LoadScaledLoot(itemid, playerLevel, player);
-    loot_level = playerLevel;
-
-    if (itemid == originalItemId)
+    uint32 scaledItemId = LootStore::LoadScaledLoot(itemid, playerLevel, player);
+    if (scaledItemId == itemid)
         return;
 
-    randomPropertyId = has_random_property ? Item::GenerateItemRandomPropertyId(itemid, randomPropertyFamily, randomSuffixFamily) : 0;
-    randomSuffix = has_random_suffix ? GenerateEnchSuffixFactor(itemid) : 0;
+    int32 scaledRandomProperty = has_random_property ? Item::GenerateItemRandomPropertyIdForFamily(scaledItemId, randomPropertyFamily, randomSuffixFamily) : 0;
+    if (has_random_property && !scaledRandomProperty)
+        return;
+
+    itemid = scaledItemId;
+    loot_level = playerLevel;
+    randomPropertyId = scaledRandomProperty;
+    randomSuffix = has_random_suffix ? GenerateEnchSuffixFactor(scaledItemId) : 0;
 }
 
 void LootItem::GetScaledValuesForPlayer(uint32 playerLevel, Player* player, uint32& scaledItemId, uint32& scaledRandomSuffix, int32& scaledRandomProperty) const
@@ -523,9 +526,14 @@ void LootItem::GetScaledValuesForPlayer(uint32 playerLevel, Player* player, uint
     scaledItemId = LootStore::LoadScaledLoot(itemid, playerLevel, player);
     if (scaledItemId != itemid)
     {
-        uint32 scaledPropertyFamily = randomPropertyFamily;
-        uint32 scaledSuffixFamily = randomSuffixFamily;
-        scaledRandomProperty = has_random_property ? Item::GenerateItemRandomPropertyId(scaledItemId, scaledPropertyFamily, scaledSuffixFamily) : 0;
+        int32 candidateRandomProperty = has_random_property ? Item::GenerateItemRandomPropertyIdForFamily(scaledItemId, randomPropertyFamily, randomSuffixFamily) : 0;
+        if (has_random_property && !candidateRandomProperty)
+        {
+            scaledItemId = itemid;
+            return;
+        }
+
+        scaledRandomProperty = candidateRandomProperty;
         scaledRandomSuffix = has_random_suffix ? GenerateEnchSuffixFactor(scaledItemId) : 0;
     }
 }

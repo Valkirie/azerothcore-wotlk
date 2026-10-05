@@ -298,6 +298,7 @@ public:
     void UpdateItemSuffixFactor();
     static int32 GenerateItemRandomPropertyId(uint32 item_id);
     static int32 GenerateItemRandomPropertyId(uint32 item_id, uint32& propertyFamily, uint32& suffixFamily);
+    static int32 GenerateItemRandomPropertyIdForFamily(uint32 item_id, uint32 propertyFamily, uint32 suffixFamily);
     void SetEnchantment(EnchantmentSlot slot, uint32 id, uint32 duration, uint32 charges, ObjectGuid caster = ObjectGuid::Empty);
     void SetEnchantmentDuration(EnchantmentSlot slot, uint32 duration, Player* owner);
     void SetEnchantmentCharges(EnchantmentSlot slot, uint32 charges);
