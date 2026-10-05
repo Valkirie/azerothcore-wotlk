@@ -192,12 +192,12 @@ void WorldSession::HandleLfgPlayerLockInfoRequestOpcode(WorldPacket& /*recvData*
             uint8 playerLevelForXP = playerLevel;
             sScriptMgr->OnPlayerBeforeGetLevelForXPGain(GetPlayer(), playerLevelForXP);
 
+            uint32 questXp = playerLevelForXP < GetPlayer()->GetUInt32Value(PLAYER_FIELD_MAX_LEVEL) ? quest->XPValue(playerLevelForXP) : 0;
+            uint8 rewardLevel = GetPlayer()->CalculateQuestRewardLevel(questXp);
+
             data << uint8(done);
-            data << uint32(quest->GetRewOrReqMoney(playerLevel));
-            if (playerLevelForXP < GetPlayer()->GetUInt32Value(PLAYER_FIELD_MAX_LEVEL))
-                data << uint32(quest->XPValue(playerLevelForXP));
-            else
-                data << uint32(0);
+            data << uint32(quest->GetRewOrReqMoney(rewardLevel));
+            data << questXp;
             data << uint32(0);
             data << uint32(0);
             data << uint8(quest->GetRewItemsCount());
@@ -485,14 +485,16 @@ void WorldSession::SendLfgPlayerReward(lfg::LfgPlayerRewardData const& rewardDat
     uint8 playerLevel = GetPlayer() ? GetPlayer()->GetLevel() : 0;
     uint8 playerLevelForXP = playerLevel;
     sScriptMgr->OnPlayerBeforeGetLevelForXPGain(GetPlayer(), playerLevelForXP);
+    uint32 questXp = rewardData.quest->XPValue(playerLevelForXP);
+    uint8 rewardLevel = GetPlayer()->CalculateQuestRewardLevel(questXp);
 
     WorldPacket data(SMSG_LFG_PLAYER_REWARD, 4 + 4 + 1 + 4 + 4 + 4 + 4 + 4 + 1 + itemNum * (4 + 4 + 4));
     data << uint32(rewardData.rdungeonEntry);              // Random Dungeon Finished
     data << uint32(rewardData.sdungeonEntry);              // Dungeon Finished
     data << uint8(rewardData.done);
     data << uint32(1);
-    data << uint32(rewardData.quest->GetRewOrReqMoney(playerLevel));
-    data << uint32(rewardData.quest->XPValue(playerLevelForXP));
+    data << uint32(rewardData.quest->GetRewOrReqMoney(rewardLevel));
+    data << questXp;
     data << uint32(0);
     data << uint32(0);
     data << uint8(itemNum);

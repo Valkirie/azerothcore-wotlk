@@ -1491,6 +1491,22 @@ uint32 Player::CalculateQuestRewardXP(Quest const* quest)
     return xp;
 }
 
+uint8 Player::CalculateQuestRewardLevel(uint32 xp) const
+{
+    uint8 level = GetLevel();
+    uint32 const maxLevel = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
+    uint64 newXP = uint64(GetUInt32Value(PLAYER_XP)) + xp;
+    uint32 nextLevelXP = GetUInt32Value(PLAYER_NEXT_LEVEL_XP);
+
+    while (newXP >= nextLevelXP && level < maxLevel)
+    {
+        newXP -= nextLevelXP;
+        nextLevelXP = sObjectMgr->GetXPForLevel(++level);
+    }
+
+    return level;
+}
+
 bool Player::GetQuestRewardStatus(uint32 quest_id) const
 {
     Quest const* qInfo = sObjectMgr->GetQuestTemplate(quest_id);

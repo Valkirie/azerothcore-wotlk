@@ -1488,6 +1488,7 @@ public:
     bool GiveQuestSourceItem(Quest const* quest);
     bool TakeQuestSourceItem(uint32 questId, bool msg);
     uint32 CalculateQuestRewardXP(Quest const* quest);
+    [[nodiscard]] uint8 CalculateQuestRewardLevel(uint32 xp) const;
     [[nodiscard]] bool GetQuestRewardStatus(uint32 quest_id) const;
     [[nodiscard]] QuestStatus GetQuestStatus(uint32 quest_id) const;
     void SetQuestStatus(uint32 questId, QuestStatus status, bool update = true);

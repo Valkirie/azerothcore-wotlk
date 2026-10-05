@@ -453,24 +453,18 @@ void PlayerMenu::SendQuestGiverQuestDetails(Quest const* quest, ObjectGuid npcGU
                 data << uint32(0);
         }
 
-        uint32 moneyRew = 0;
         Player* player = _session->GetPlayer();
-        if (player && (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(player)))
-        {
-            moneyRew = quest->GetRewMoneyMaxLevel();
-        }
-        moneyRew += quest->GetRewOrReqMoney(player ? player->GetLevel() : 0); // reward money (below max lvl)
-        data << moneyRew;
-        uint32 questXp;
-        if (player && !sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(player))
+        bool const rewardWithMoney = player && (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(player));
+        uint32 questXp = 0;
+        if (player && !rewardWithMoney)
         {
             questXp = player->CalculateQuestRewardXP(quest);
         }
-        else
-        {
-            questXp = 0;
-        }
         sScriptMgr->OnPlayerQuestComputeXP(player, quest, questXp);
+
+        uint32 moneyRew = rewardWithMoney ? quest->GetRewMoneyMaxLevel() : 0;
+        moneyRew += quest->GetRewOrReqMoney(player ? player->CalculateQuestRewardLevel(questXp) : 0); // reward money (below max lvl)
+        data << moneyRew;
         data << questXp;
     }
 
@@ -553,13 +547,17 @@ void PlayerMenu::SendQuestQueryResponse(Quest const* quest) const
         data << uint32(0);                                  // Hide money rewarded
     else
     {
-        uint32 moneyRew = 0;
         Player* player = _session->GetPlayer();
-        if (player && (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(player)))
+        bool const rewardWithMoney = player && (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(player));
+        uint32 questXp = 0;
+        if (player && !rewardWithMoney)
         {
-            moneyRew = quest->GetRewMoneyMaxLevel();
+            questXp = player->CalculateQuestRewardXP(quest);
         }
-        moneyRew += quest->GetRewOrReqMoney(player ? player->GetLevel() : 0); // reward money (below max lvl)
+        sScriptMgr->OnPlayerQuestComputeXP(player, quest, questXp);
+
+        uint32 moneyRew = rewardWithMoney ? quest->GetRewMoneyMaxLevel() : 0;
+        moneyRew += quest->GetRewOrReqMoney(player ? player->CalculateQuestRewardLevel(questXp) : 0); // reward money (below max lvl)
         data << moneyRew;
     }
 
@@ -705,24 +703,18 @@ void PlayerMenu::SendQuestGiverOfferReward(Quest const* quest, ObjectGuid npcGUI
             data << uint32(0);
     }
 
-    uint32 moneyRew = 0;
     Player* player = _session->GetPlayer();
-    if (player && (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(player)))
-    {
-        moneyRew = quest->GetRewMoneyMaxLevel();
-    }
-    moneyRew += quest->GetRewOrReqMoney(player ? player->GetLevel() : 0); // reward money (below max lvl)
-    data << moneyRew;
-    uint32 questXp;
-    if (player && !sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(player))
+    bool const rewardWithMoney = player && (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(player));
+    uint32 questXp = 0;
+    if (player && !rewardWithMoney)
     {
         questXp = player->CalculateQuestRewardXP(quest);
     }
-    else
-    {
-        questXp = 0;
-    }
     sScriptMgr->OnPlayerQuestComputeXP(player, quest, questXp);
+
+    uint32 moneyRew = rewardWithMoney ? quest->GetRewMoneyMaxLevel() : 0;
+    moneyRew += quest->GetRewOrReqMoney(player ? player->CalculateQuestRewardLevel(questXp) : 0); // reward money (below max lvl)
+    data << moneyRew;
     data << questXp;
 
     // rewarded honor points. Multiply with 10 to satisfy client
