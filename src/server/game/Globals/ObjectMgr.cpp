@@ -61,6 +61,65 @@ ScriptMapMap sSpellScripts;
 ScriptMapMap sEventScripts;
 ScriptMapMap sWaypointScripts;
 
+namespace
+{
+    bool IsApprenticeRidingMailTemplate(uint32 mailTemplateId)
+    {
+        // Riding Training Pamphlet
+        switch (mailTemplateId)
+        {
+            case 224:
+            case 225:
+            case 226:
+            case 227:
+            case 228:
+            case 229:
+            case 230:
+            case 231:
+            case 232:
+            case 233:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool IsFirstTierClassMountQuest(uint32 questId)
+    {
+        switch (questId)
+        {
+            case 1661:
+            case 3631:
+            case 4485:
+            case 4486:
+            case 4487:
+            case 4488:
+            case 4489:
+            case 4490:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool IsFirstTierMountTrainerSpell(uint32 spellId)
+    {
+        switch (spellId)
+        {
+            case 1710:
+            case 5784:
+            case 5785:
+            case 13819:
+            case 13820:
+            case 34768:
+            case 34769:
+                return true;
+            default:
+                return false;
+        }
+    }
+}
+
 std::string GetScriptsTableNameByType(ScriptsType type)
 {
     std::string res = "";
@@ -5149,6 +5208,9 @@ void ObjectMgr::LoadQuests()
         Field* fields = result->Fetch();
 
         Quest* newQuest = new Quest(fields);
+        if (IsFirstTierClassMountQuest(newQuest->GetQuestId()))
+            newQuest->MinLevel = sWorld->getIntConfig(CONFIG_MIN_MOUNT_LEVEL);
+
         _questTemplates[newQuest->GetQuestId()] = newQuest;
     } while (result->NextRow());
 
@@ -9922,6 +9984,9 @@ void ObjectMgr::LoadMailLevelRewards()
         uint32 mailTemplateId = fields[2].Get<uint32>();
         uint32 senderEntry    = fields[3].Get<uint32>();
 
+        if (IsApprenticeRidingMailTemplate(mailTemplateId))
+            level = uint8(sWorld->getIntConfig(CONFIG_MIN_MOUNT_LEVEL));
+
         if (level > MAX_LEVEL)
         {
             LOG_ERROR("sql.sql", "Table `mail_level_reward` have data for level {} that more supported by client ({}), ignoring.", level, MAX_LEVEL);
@@ -9980,6 +10045,9 @@ void ObjectMgr::LoadTrainers()
             spell.ReqAbility[1] = fields[6].Get<uint32>();
             spell.ReqAbility[2] = fields[7].Get<uint32>();
             spell.ReqLevel = fields[8].Get<uint8>();
+
+            if (IsFirstTierMountTrainerSpell(spell.SpellId))
+                spell.ReqLevel = uint8(sWorld->getIntConfig(CONFIG_MIN_MOUNT_LEVEL));
 
             SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spell.SpellId);
             if (!spellInfo)

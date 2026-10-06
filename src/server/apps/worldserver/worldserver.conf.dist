@@ -2125,6 +2125,15 @@ EnablePlayerSettings = 0
 MaxPlayerLevel = 80
 
 #
+#    MinMountLevel
+#        Description: Level requirement for apprentice riding, first-tier class mounts, and the
+#                     apprentice riding information mail.
+#        Range:       1-MaxPlayerLevel
+#        Default:     20
+
+MinMountLevel = 20
+
+#
 #    MinDualSpecLevel
 #        Description: Level requirement for Dual Talent Specialization
 #        Default:     40
