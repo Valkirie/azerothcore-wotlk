@@ -16,6 +16,7 @@
 #include "gtest/gtest.h"
 #include <array>
 #include <iostream>
+#include <optional>
 #include <string_view>
 
 namespace
@@ -302,6 +303,39 @@ TEST_F(ScalingTests, EvP_Healing)
 TEST_F(ScalingTests, EvP_DoT)
 {
     EXPECT_FLOAT_EQ(Scale(CreatePlayer(1, TestLowLevel), CreatePlayer(2, TestHighLevel, TEST_FACTION_HOSTILE_TO_ALL), 25.0f), 100.0f);
+}
+
+TEST_F(ScalingTests, AreaScaling_InheritsParentUnlessChildOverrides)
+{
+    constexpr uint32 ParentZoneId = 12;
+    constexpr uint32 ChildAreaId = 34;
+    std::optional<ZoneFlex> originalParent;
+    std::optional<ZoneFlex> originalChild;
+
+    if (ZoneFlex const* zoneFlex = sObjectMgr->GetZoneFlexForTest(ParentZoneId))
+        originalParent = *zoneFlex;
+    if (ZoneFlex const* zoneFlex = sObjectMgr->GetZoneFlexForTest(ChildAreaId))
+        originalChild = *zoneFlex;
+
+    ZoneFlex parent{ "Parent", ParentZoneId, 0, 10, 20, AREA_FLAG_LOWLEVEL };
+    ZoneFlex child{ "Child", ChildAreaId, 0, 5, 10, 0 };
+    sObjectMgr->SetZoneFlexForTest(parent);
+    sObjectMgr->RemoveZoneFlexForTest(ChildAreaId);
+
+    ZoneFlex const* inherited = sObjectMgr->GetAreaZoneFlex(ChildAreaId);
+    EXPECT_EQ(inherited, sObjectMgr->GetZoneFlexForTest(ParentZoneId));
+
+    sObjectMgr->SetZoneFlexForTest(child);
+    EXPECT_EQ(sObjectMgr->GetAreaZoneFlex(ChildAreaId), sObjectMgr->GetZoneFlexForTest(ChildAreaId));
+
+    if (originalParent)
+        sObjectMgr->SetZoneFlexForTest(*originalParent);
+    else
+        sObjectMgr->RemoveZoneFlexForTest(ParentZoneId);
+    if (originalChild)
+        sObjectMgr->SetZoneFlexForTest(*originalChild);
+    else
+        sObjectMgr->RemoveZoneFlexForTest(ChildAreaId);
 }
 
 TEST_F(ScalingTests, EvP_Proc)

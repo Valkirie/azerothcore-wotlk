@@ -1783,13 +1783,10 @@ public:
     // Returns the effective-to-native creature health or mana ratio for a level.
     float GetCreatureBaseStatRatio(Creature const* creature, uint8 scaledLevel, SpellType scalingType) const;
 
-    ZoneFlex const* GetAreaZoneFlex(uint32 areaId, uint32 zoneId = 0) const
-    {
-        if (ZoneFlex const* areaZoneFlex = GetZoneFlex(areaId))
-            return areaZoneFlex;
-
-        return GetZoneFlex(zoneId);
-    }
+    ZoneFlex const* GetAreaZoneFlex(uint32 areaId, uint32 zoneId = 0) const;
+    void SetZoneFlexForTest(ZoneFlex const& zoneFlex);
+    void RemoveZoneFlexForTest(uint32 areaId);
+    ZoneFlex const* GetZoneFlexForTest(uint32 areaId) const { return GetZoneFlex(areaId); }
 
     // Scales creature armor and damage while preserving the original level ratio.
     uint32 ScaleArmor(Unit* owner, Unit* target, uint32 armor) const;

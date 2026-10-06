@@ -24,6 +24,7 @@
 #include "Config.h"
 #include "Containers.h"
 #include "CreatureAIFactory.h"
+#include "DBCStores.h"
 #include "DBCStructure.h"
 #include "DatabaseEnv.h"
 #include "DisableMgr.h"
@@ -10718,6 +10719,27 @@ bool ObjectMgr::UsesCreatureStorageScaling(Unit* owner, Unit* target) const
     Unit* realOwner = owner->GetCharmerOrOwnerOrSelf();
     Unit* realTarget = target->GetCharmerOrOwnerOrSelf();
     return realOwner && realTarget && realOwner->IsPlayer() && realTarget->IsCreature();
+}
+
+ZoneFlex const* ObjectMgr::GetAreaZoneFlex(uint32 areaId, uint32 zoneId) const
+{
+    if (ZoneFlex const* areaFlex = GetZoneFlex(areaId))
+        return areaFlex;
+
+    if (ZoneFlex const* zoneFlex = GetZoneFlex(zoneId))
+        return zoneFlex;
+
+    return nullptr;
+}
+
+void ObjectMgr::SetZoneFlexForTest(ZoneFlex const& zoneFlex)
+{
+    mZoneFlexMap[zoneFlex.areaId] = zoneFlex;
+}
+
+void ObjectMgr::RemoveZoneFlexForTest(uint32 areaId)
+{
+    mZoneFlexMap.erase(areaId);
 }
 
 // Load zone ranges and per-creature level offsets used by custom scaling.
