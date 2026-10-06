@@ -35,6 +35,7 @@
 #include "LFG.h"
 #include "LFGMgr.h"
 #include "Language.h"
+#include "LootMgr.h"
 #include "MapMgr.h"
 #include "MiscPackets.h"
 #include "MovementGenerator.h"
@@ -1743,7 +1744,7 @@ public:
             handler->PSendSysMessage(LANG_REMOVEITEM_NONE_LEFT, itemId, removed, nameLink, guidLow, status);
     }
 
-    static bool HandleAddItemCommand(ChatHandler* handler, Optional<PlayerIdentifier> player, ItemTemplate const* itemTemplate, Optional<int32> _count)
+    static bool HandleAddItemCommand(ChatHandler* handler, Optional<PlayerIdentifier> player, ItemTemplate const* itemTemplate, Optional<int32> _count, Optional<uint32> level)
     {
         if (!sObjectMgr->GetItemTemplate(itemTemplate->ItemId))
         {
@@ -1898,6 +1899,9 @@ public:
             handler->SendErrorMessage(LANG_PLAYER_NOT_FOUND);
             return false;
         }
+
+        if (level)
+            itemId = LootStore::LoadScaledLoot(sObjectMgr->GetItemParentEntry(itemId), *level, playerTarget);
 
         // Adding items
         uint32 noSpaceForCount = 0;
