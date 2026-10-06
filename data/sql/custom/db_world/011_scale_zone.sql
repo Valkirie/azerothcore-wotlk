@@ -199,6 +199,7 @@ insert  into `rochenoire_scale_zone`(`areaName`,`mapId`,`areaId`,`LevelRangeMin`
 ('The Oculus',578,4228,67,80,16384,'AREA_FLAG_OUTLAND2'),
 ('The Nexus',576,4265,59,80,0,'NONE'),
 ('Azjol-Nerub',601,4277,60,80,0,'NONE'),
+('Acherus: The Ebon Hold',609,4281,55,58,1065024,'AREA_FLAG_ALLOW_DUELS | AREA_FLAG_OUTLAND2 | AREA_FLAG_LOWLEVEL'),
 ('Plaguelands: The Scarlet Enclave',609,4298,55,58,1065024,'AREA_FLAG_ALLOW_DUELS | AREA_FLAG_OUTLAND2 | AREA_FLAG_LOWLEVEL'),
 ('The Violet Hold',608,4415,63,80,0,'NONE'),
 ('Gundrak',604,4416,64,80,0,'NONE'),
