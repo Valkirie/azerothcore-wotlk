@@ -23,12 +23,16 @@
 #include "CombatManager.h"
 #include "Containers.h"
 #include "CreatureScript.h"
+#include "Pet.h"
 #include "PetDefines.h"
+#include "PetScript.h"
+#include "Player.h"
 #include "ScriptedCreature.h"
 #include "SpellAuraEffects.h"
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
 #include "TemporarySummon.h"
+#include "WorldSession.h"
 
 enum HunterSpells
 {
@@ -37,6 +41,11 @@ enum HunterSpells
     SPELL_HUNTER_MIND_NUMBING_POISON    = 25810, // Viper
     SPELL_HUNTER_GLYPH_OF_SNAKE_TRAP    = 56849,
     SPELL_HUNTER_PET_SCALING            = 62915
+};
+
+enum HunterPetVehicles
+{
+    VEHICLE_HUNTER_PET_CLICK_TRIGGER = 217
 };
 
 enum PetSpellsMisc
@@ -49,6 +58,25 @@ enum PetSpellsMisc
     PET_ICON_ID_CLAW                = 262,
     PET_ICON_ID_BITE                = 1680,
     PET_ICON_ID_SMACK               = 473
+};
+
+class pet_hunter_rideable : public PetScript
+{
+public:
+    pet_hunter_rideable() : PetScript("pet_hunter_rideable", { PETHOOK_ON_PET_ADD_TO_WORLD }) { }
+
+    void OnPetAddToWorld(Pet* pet) override
+    {
+        if (pet->IsGroundHunterPet())
+        {
+            if (!pet->GetVehicleKit())
+                pet->CreateVehicleKit(VEHICLE_HUNTER_PET_CLICK_TRIGGER, pet->GetEntry());
+
+            pet->SetNpcFlag(UNIT_NPC_FLAG_SPELLCLICK | UNIT_NPC_FLAG_PLAYER_VEHICLE);
+            if (Player* owner = pet->GetOwner()->ToPlayer())
+                owner->GetSession()->SendCreatureQueryResponse(pet->GetEntry(), "vehichleCursor");
+        }
+    }
 };
 
 struct npc_pet_hunter_snake_trap : public ScriptedAI
@@ -267,6 +295,7 @@ class spell_pet_culling_the_herd : public AuraScript
 
 void AddSC_hunter_pet_scripts()
 {
+    new pet_hunter_rideable();
     RegisterCreatureAI(npc_pet_hunter_snake_trap);
     RegisterSpellScript(spell_pet_guard_dog);
     RegisterSpellScript(spell_pet_silverback);

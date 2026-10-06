@@ -53,6 +53,7 @@ public:
     void setPetType(PetType type) { m_petType = type; }
     bool isControlled() const { return getPetType() == SUMMON_PET || getPetType() == HUNTER_PET; }
     bool isTemporarySummoned() const { return m_duration > 0ms; }
+    bool IsGroundHunterPet() const;
 
     bool IsPermanentPetFor(Player* owner) const;              // pet have tab in character windows and set UNIT_FIELD_PETNUMBER
 

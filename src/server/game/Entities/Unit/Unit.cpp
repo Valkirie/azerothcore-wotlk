@@ -64,6 +64,7 @@
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "TemporarySummon.h"
+#include "ThreatManager.h"
 #include "Totem.h"
 #include "TotemAI.h"
 #include "Transport.h"
@@ -15499,6 +15500,116 @@ bool Unit::HandleSpellClick(Unit* clicker, int8 seatId)
         }
     }
 
+    // A temporary creature proxy provides vehicle behavior without changing the Pet object's lifecycle or type.
+    if (Pet* pet = ToPet(); pet && pet->getPetType() == HUNTER_PET && pet->GetOwnerGUID() == clicker->GetGUID())
+    {
+        // Restrict riding to ground families and safe out-of-combat owner interactions.
+        if (!pet->IsGroundHunterPet())
+            return false;
+
+        Player* rider = clicker->ToPlayer();
+        bool canBoard = rider && rider->IsAlive() && pet->IsAlive() && !rider->IsInCombat() && !pet->IsInCombat() &&
+            !rider->IsMounted() && !rider->GetVehicle() &&
+            pet->IsWithinDistInMap(rider, INTERACTION_DISTANCE) && (!rider->FindMap() || !rider->FindMap()->IsBattleArena());
+
+        if (canBoard)
+        {
+            uint32 hunterPetVehicleId = 202;
+
+            // Override the generic proxy query so the client displays the pet's name while mounted.
+            rider->GetSession()->SendCreatureQueryResponse(NPC_HUNTER_PET_VEHICLE_PROXY, {}, pet->GetName());
+            if (TempSummon* proxy = rider->SummonCreature(NPC_HUNTER_PET_VEHICLE_PROXY, pet->GetPosition(), TEMPSUMMON_MANUAL_DESPAWN, 0, hunterPetVehicleId))
+            {
+                // Preserve the persistent pet identity and reproduce its visible appearance on the proxy.
+                proxy->SetCreatorGUID(pet->GetGUID());
+                proxy->SetUInt32Value(UNIT_FIELD_PETNUMBER, pet->GetCharmInfo()->GetPetNumber());
+                proxy->SetName(pet->GetName());
+                proxy->SetDisplayId(pet->GetDisplayId());
+                proxy->SetNativeDisplayId(pet->GetNativeDisplayId());
+                proxy->SetObjectScale(pet->GetObjectScale());
+                proxy->SetFaction(pet->GetFaction());
+                proxy->SetLevel(pet->GetLevel());
+                proxy->SetReactState(REACT_PASSIVE);
+                proxy->SetMaxHealth(pet->GetMaxHealth());
+                proxy->SetHealth(pet->GetHealth());
+                proxy->SetObjectScale(1.2);
+
+                // Copy derived combat attributes because the proxy does not receive normal hunter pet scaling.
+                for (uint8 stat = STAT_STRENGTH; stat < MAX_STATS; ++stat)
+                    proxy->SetStat(Stats(stat), int32(pet->GetStat(Stats(stat))));
+
+                for (uint8 school = SPELL_SCHOOL_NORMAL; school < MAX_SPELL_SCHOOL; ++school)
+                    proxy->SetResistance(SpellSchools(school), int32(pet->GetResistance(SpellSchools(school))));
+
+                proxy->SetInt32Value(UNIT_FIELD_ATTACK_POWER, pet->GetInt32Value(UNIT_FIELD_ATTACK_POWER));
+                proxy->SetInt32Value(UNIT_FIELD_ATTACK_POWER_MODS, pet->GetInt32Value(UNIT_FIELD_ATTACK_POWER_MODS));
+                proxy->SetFloatValue(UNIT_FIELD_ATTACK_POWER_MULTIPLIER, pet->GetFloatValue(UNIT_FIELD_ATTACK_POWER_MULTIPLIER));
+
+                for (uint8 attack = BASE_ATTACK; attack < MAX_ATTACK; ++attack)
+                {
+                    WeaponAttackType attackType = WeaponAttackType(attack);
+                    proxy->SetAttackTime(attackType, pet->GetAttackTime(attackType));
+                    proxy->SetBaseWeaponDamage(attackType, MINDAMAGE, pet->GetWeaponDamageRange(attackType, MINDAMAGE));
+                    proxy->SetBaseWeaponDamage(attackType, MAXDAMAGE, pet->GetWeaponDamageRange(attackType, MAXDAMAGE));
+                }
+
+                // Mirror the pet's movement rates on the vehicle proxy, overriding run speed with
+                // level-based ground mount rates once the pet reaches the configured riding level.
+                for (uint8 moveType = MOVE_WALK; moveType < MAX_MOVE_TYPE; ++moveType)
+                {
+                    float moveSpeed = pet->GetSpeedRate(UnitMoveType(moveType));
+
+                    switch (moveType)
+                    {
+                    case MOVE_RUN:
+                    {
+                        if (pet->GetLevel() >= 40)
+                            moveSpeed = 2.0f;
+                        else if (pet->GetLevel() >= sWorld->getIntConfig(CONFIG_MIN_MOUNT_LEVEL))
+                            moveSpeed = 1.6f;
+                    }
+                    break;
+                    }
+
+                    proxy->SetSpeed(UnitMoveType(moveType), moveSpeed);
+                }
+
+                // Hunter pet abilities consume Focus; happiness remains persisted on the original Pet object.
+                proxy->setPowerType(POWER_FOCUS);
+                proxy->SetMaxPower(POWER_FOCUS, pet->GetMaxPower(POWER_FOCUS));
+                proxy->SetPower(POWER_FOCUS, pet->GetPower(POWER_FOCUS));
+
+                // Build the vehicle action bar from pet spells and preserve their active cooldowns.
+                uint8 proxySpellSlot = 0;
+                CharmInfo* charmInfo = pet->GetCharmInfo();
+                for (uint8 i = ACTION_BAR_INDEX_PET_SPELL_START; i < ACTION_BAR_INDEX_PET_SPELL_END && proxySpellSlot < MAX_CREATURE_SPELLS; ++i)
+                {
+                    UnitActionBarEntry const* action = charmInfo->GetActionBarEntry(i);
+                    if (action->IsActionBarForSpell() && action->GetAction())
+                        proxy->m_spells[proxySpellSlot++] = action->GetAction();
+                }
+                proxy->SetCreatureSpellCooldowns(pet->GetCreatureSpellCooldowns());
+
+                // Transfer threat before replacing the original pet with the controllable vehicle proxy.
+                ThreatManager::Snapshot petThreat = pet->GetThreatMgr().CreateSnapshot();
+                rider->UnsummonPetTemporaryIfAny();
+                proxy->GetThreatMgr().RestoreSnapshot(petThreat);
+                rider->EnterVehicle(proxy, 0);
+                canBoard = rider->GetVehicleBase() == proxy;
+                if (!canBoard)
+                {
+                    // Roll back the temporary swap when vehicle boarding fails.
+                    rider->ResummonPetTemporaryUnSummonedIfAny();
+                    proxy->DespawnOrUnsummon();
+                }
+            }
+            else
+                canBoard = false;
+        }
+
+        return canBoard;
+    }
+
     bool result = false;
     uint32 spellClickEntry = GetVehicleKit() ? GetVehicleKit()->GetCreatureEntry() : GetEntry();
     SpellClickInfoMapBounds clickPair = sObjectMgr->GetSpellClickInfoMapBounds(spellClickEntry);
@@ -15728,6 +15839,29 @@ void Unit::_ExitVehicle(Position const* exitPosition)
     if (!vehicleBase)
         return;
 
+    // Capture the dedicated proxy state before generic vehicle cleanup destroys it.
+    bool restoreHunterPetState = false;
+    bool hunterPetDied = false;
+    uint32 hunterPetHealth = 0;
+    uint32 hunterPetFocus = 0;
+    uint32 hunterPetNumber = 0;
+    Position hunterPetPosition;
+    ThreatManager::Snapshot hunterPetThreat;
+    CreatureSpellCooldowns hunterPetCooldowns;
+    if (vehicleBase->GetEntry() == NPC_HUNTER_PET_VEHICLE_PROXY && vehicleBase->IsSummon())
+    {
+        restoreHunterPetState = true;
+        hunterPetDied = !vehicleBase->IsAlive();
+        hunterPetHealth = hunterPetDied ? 0 : vehicleBase->GetHealth();
+        hunterPetFocus = vehicleBase->GetPower(POWER_FOCUS);
+        hunterPetNumber = vehicleBase->GetUInt32Value(UNIT_FIELD_PETNUMBER);
+        hunterPetPosition = vehicleBase->GetPosition();
+        hunterPetThreat = vehicleBase->GetThreatMgr().CreateSnapshot();
+        hunterPetCooldowns = vehicleBase->ToCreature()->GetCreatureSpellCooldowns();
+
+        vehicleBase->ToTempSummon()->DespawnOrUnsummon(1ms);
+    }
+
     if (IsPlayer())
         ToPlayer()->SetExpectingChangeTransport(true);
 
@@ -15842,6 +15976,20 @@ void Unit::_ExitVehicle(Position const* exitPosition)
 
     if (player)
     {
+        // Queue the captured proxy state for the asynchronously reloaded original pet.
+        if (restoreHunterPetState)
+            player->SetPendingPetProxyState(hunterPetNumber, hunterPetHealth, hunterPetFocus, hunterPetPosition,
+                std::move(hunterPetThreat), std::move(hunterPetCooldowns));
+
+        if (hunterPetDied)
+        {
+            // A dead proxy leaves the original pet persistently dead for the normal Revive Pet flow.
+            player->SetTemporaryUnsummonedPetNumber(0);
+            player->SetCanTeleport(true);
+            return;
+        }
+
+        // A surviving proxy returns immediately as the original pet with its transferred state.
         player->ResummonPetTemporaryUnSummonedIfAny();
         player->SetCanTeleport(true);
     }
@@ -16890,6 +17038,13 @@ void Unit::PatchValuesUpdate(ByteBuffer& valuesUpdateBuf, BuildValuesCachePosPoi
     if (creature && posPointers.UnitNPCFlagsPos >= 0)
     {
         uint32 appendValue = m_uint32Values[UNIT_NPC_FLAGS];
+
+        if (creature->IsPet())
+        {
+            Pet const* pet = static_cast<Pet const*>(creature);
+            if (pet->getPetType() == HUNTER_PET && pet->GetOwnerGUID() != target->GetGUID())
+                appendValue &= ~(UNIT_NPC_FLAG_SPELLCLICK | UNIT_NPC_FLAG_PLAYER_VEHICLE);
+        }
 
         if (sWorld->getIntConfig(CONFIG_INSTANT_TAXI) == 2 && appendValue & UNIT_NPC_FLAG_FLIGHTMASTER)
             appendValue |= UNIT_NPC_FLAG_GOSSIP; // flight masters need NPC gossip flag to show instant flight toggle option

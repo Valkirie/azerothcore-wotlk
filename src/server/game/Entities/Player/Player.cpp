@@ -14631,9 +14631,94 @@ void Player::ResummonPetTemporaryUnSummonedIfAny()
 
     Pet* newPet = new Pet(this);
     if (!newPet->LoadPetFromDB(this, 0, m_temporaryUnsummonedPetNumber, true))
+    {
         delete newPet;
+        return;
+    }
 
     m_temporaryUnsummonedPetNumber = 0;
+}
+
+void Player::SetPendingPetProxyState(uint32 petNumber, uint32 health, uint32 focus, Position const& position,
+    ThreatManager::Snapshot&& threat, CreatureSpellCooldowns&& cooldowns)
+{
+    // Keep transient state in memory for the normal asynchronous temporary-pet reload.
+    m_pendingPetProxyState = PendingPetProxyState{ petNumber, health, focus, position, std::move(threat), std::move(cooldowns) };
+
+    // Surviving pets restore in memory; dead pets and logout require durable state before this Player is discarded.
+    if (health && !GetSession()->PlayerLogout())
+        return;
+
+    // Keep the loaded stable cache consistent with the database update below.
+    if (m_petStable && m_petStable->CurrentPet && m_petStable->CurrentPet->PetNumber == petNumber)
+    {
+        m_petStable->CurrentPet->Health = health;
+        m_petStable->CurrentPet->Mana = focus;
+    }
+
+    // Persist health and Focus so a dead or logged-out proxy cannot roll back pet state.
+    CharacterDatabaseTransaction transaction = CharacterDatabase.BeginTransaction();
+    CharacterDatabasePreparedStatement* statement = CharacterDatabase.GetPreparedStatement(CHAR_UPD_CHAR_PET_STATE);
+    statement->SetData(0, health);
+    statement->SetData(1, focus);
+    statement->SetData(2, GetGUID().GetCounter());
+    statement->SetData(3, petNumber);
+    transaction->Append(statement);
+
+    // Replace persisted cooldowns with the final cooldown state produced while riding.
+    statement = CharacterDatabase.GetPreparedStatement(CHAR_DEL_PET_SPELL_COOLDOWNS);
+    statement->SetData(0, petNumber);
+    transaction->Append(statement);
+
+    time_t currentTime = GameTime::GetGameTime().count();
+    uint32 currentMilliseconds = GameTime::GetGameTimeMS().count();
+    uint32 infiniteCooldownTime = currentMilliseconds + infinityCooldownDelayCheck;
+    for (auto const& [spellId, cooldown] : m_pendingPetProxyState->Cooldowns)
+    {
+        if (cooldown.end <= currentMilliseconds + IN_MILLISECONDS || cooldown.end > infiniteCooldownTime)
+            continue;
+
+        statement = CharacterDatabase.GetPreparedStatement(CHAR_INS_PET_SPELL_COOLDOWN);
+        statement->SetData(0, petNumber);
+        statement->SetData(1, spellId);
+        statement->SetData(2, cooldown.category);
+        statement->SetData(3, ((cooldown.end - currentMilliseconds) / IN_MILLISECONDS) + currentTime);
+        transaction->Append(statement);
+    }
+
+    CharacterDatabase.CommitTransaction(transaction);
+    m_pendingPetProxyState.reset();
+}
+
+void Player::ApplyPendingPetProxyState(Pet* pet)
+{
+    if (!m_pendingPetProxyState || !pet)
+        return;
+
+    // Never apply one pet's proxy state to another pet that happens to finish loading first.
+    if (pet->GetCharmInfo()->GetPetNumber() != m_pendingPetProxyState->PetNumber)
+        return;
+
+    // Restore resources, cooldowns, and position through normal map relocation handling.
+    uint32 health = std::min(m_pendingPetProxyState->Health, pet->GetMaxHealth());
+    pet->SetCreatureSpellCooldowns(std::move(m_pendingPetProxyState->Cooldowns));
+    pet->SetPower(POWER_FOCUS, std::min(m_pendingPetProxyState->Focus, pet->GetMaxPower(POWER_FOCUS)));
+    pet->NearTeleportTo(m_pendingPetProxyState->PetPosition);
+    if (health)
+    {
+        // Restore reverse threat and immediately resume attacking the highest valid aggressor.
+        pet->SetHealth(health);
+        pet->GetThreatMgr().RestoreSnapshot(m_pendingPetProxyState->Threat);
+
+        if (Unit* aggressor = pet->GetThreatMgr().GetHighestThreateningUnit(); aggressor && pet->IsAIEnabled &&
+            aggressor->IsAlive() && pet->CanCreatureAttack(aggressor) && !aggressor->HasBreakableByDamageCrowdControlAura())
+            pet->AI()->AttackedBy(aggressor);
+    }
+    else
+        // Defensive fallback for zero-health pending state; proxy death normally follows the non-resummon path.
+        pet->setDeathState(DeathState::JustDied);
+
+    m_pendingPetProxyState.reset();
 }
 
 bool Player::CanResummonPet(uint32 spellid)
@@ -14664,6 +14749,10 @@ bool Player::CanSeeSpellClickOn(Creature const* c) const
 {
     if (!c->HasNpcFlag(UNIT_NPC_FLAG_SPELLCLICK))
         return false;
+
+    if (c->IsPet())
+        if (Pet const* pet = static_cast<Pet const*>(c); pet->getPetType() == HUNTER_PET && pet->GetOwnerGUID() == GetGUID())
+            return pet->IsGroundHunterPet();
 
     SpellClickInfoMapBounds clickPair = sObjectMgr->GetSpellClickInfoMapBounds(c->GetEntry());
     if (clickPair.first == clickPair.second)

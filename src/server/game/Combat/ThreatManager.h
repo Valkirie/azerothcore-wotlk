@@ -34,6 +34,7 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 class Creature;
@@ -89,11 +90,19 @@ struct CompareThreatLessThan
 class AC_GAME_API ThreatManager
 {
 public:
+    struct Snapshot
+    {
+        std::vector<std::pair<ObjectGuid, float>> ThreatenedByOwner;
+        std::vector<std::pair<ObjectGuid, float>> ThreateningOwner;
+    };
+
     class Heap;
     class ThreatListIterator;
     static const uint32 THREAT_UPDATE_INTERVAL = 1000u;
 
     static bool CanHaveThreatList(Unit const* who);
+    Snapshot CreateSnapshot() const;
+    void RestoreSnapshot(Snapshot const& snapshot);
 
     ThreatManager(Unit* owner);
     ~ThreatManager();
@@ -134,6 +143,8 @@ public:
 
     // does any unit have a threat list entry with victim == this.owner?
     bool IsThreateningAnyone(bool includeOffline = false) const;
+    // returns the available unit with the highest threat toward this.owner
+    Unit* GetHighestThreateningUnit() const;
     // is there a threat list entry on who's threat list for this.owner?
     bool IsThreateningTo(ObjectGuid const& who, bool includeOffline = false) const;
     // is there a threat list entry on who's threat list for this.owner?

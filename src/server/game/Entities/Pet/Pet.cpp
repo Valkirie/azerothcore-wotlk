@@ -470,9 +470,10 @@ bool Pet::LoadPetFromDB(Player* owner, uint32 petEntry, uint32 petnumber, bool c
             curHealth = CountPctFromMaxHealth(healthPct);
         }
 
+        Powers powerType = getPowerType();
         uint32 curMana = savedmana;
         if (fullMana)
-            curMana = GetMaxPower(POWER_MANA);
+            curMana = GetMaxPower(powerType);
 
         if (getPetType() == SUMMON_PET && !current) //all (?) summon pets come with full health when called, but not when they are current
         {
@@ -486,13 +487,14 @@ bool Pet::LoadPetFromDB(Player* owner, uint32 petEntry, uint32 petnumber, bool c
             else
             {
                 SetHealth(curHealth > GetMaxHealth() ? GetMaxHealth() : curHealth);
-                SetPower(POWER_MANA, curMana > GetMaxPower(POWER_MANA) ? GetMaxPower(POWER_MANA) : curMana);
+                SetPower(powerType, curMana > GetMaxPower(powerType) ? GetMaxPower(powerType) : curMana);
             }
         }
 
         // must be after SetMinion (owner guid check)
         LoadTemplateImmunities(0);
         //LoadMechanicTemplateImmunity();
+        owner->ApplyPendingPetProxyState(this);
         m_loading = false;
     });
 
@@ -523,7 +525,7 @@ void Pet::SavePetToDB(PetSaveMode mode)
     }
 
     uint32 curhealth = GetHealth();
-    uint32 curmana = GetPower(POWER_MANA);
+    uint32 curmana = GetPower(getPowerType());
 
     CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
     // save auras before possibly removing them
@@ -2283,6 +2285,33 @@ void Pet::ToggleAutocast(SpellInfo const* spellInfo, bool apply)
                     itr->second.state = PETSPELL_CHANGED;
             }
         }
+    }
+}
+
+bool Pet::IsGroundHunterPet() const
+{
+    if (getPetType() != HUNTER_PET)
+        return false;
+
+    CreatureTemplate const* creatureTemplate = GetCreatureTemplate();
+    if (!creatureTemplate)
+        return false;
+
+    switch (creatureTemplate->family)
+    {
+        case CREATURE_FAMILY_BAT:
+        case CREATURE_FAMILY_BIRD_OF_PREY:
+        case CREATURE_FAMILY_CARRION_BIRD:
+        case CREATURE_FAMILY_CHIMAERA:
+        case CREATURE_FAMILY_DRAGONHAWK:
+        case CREATURE_FAMILY_MOTH:
+        case CREATURE_FAMILY_NETHER_RAY:
+        case CREATURE_FAMILY_SPOREBAT:
+        case CREATURE_FAMILY_WASP:
+        case CREATURE_FAMILY_WIND_SERPENT:
+            return false;
+        default:
+            return true;
     }
 }
 

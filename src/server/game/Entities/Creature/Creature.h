@@ -255,6 +255,8 @@ public:
 
     uint32 m_spells[MAX_CREATURE_SPELLS];
     CreatureSpellCooldowns m_CreatureSpellCooldowns;
+    [[nodiscard]] CreatureSpellCooldowns const& GetCreatureSpellCooldowns() const { return m_CreatureSpellCooldowns; }
+    void SetCreatureSpellCooldowns(CreatureSpellCooldowns cooldowns) { m_CreatureSpellCooldowns = std::move(cooldowns); }
     uint32 m_ProhibitSchoolTime[7];
 
     bool CanStartAttack(Unit const* u, bool force = false) const;

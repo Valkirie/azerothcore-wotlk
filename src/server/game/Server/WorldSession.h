@@ -795,6 +795,7 @@ public:                                                 // opcodes handlers
 
     void HandleTimeQueryOpcode(WorldPackets::Query::TimeQuery& packet);
 
+    void SendCreatureQueryResponse(uint32 entry, std::string_view iconNameOverride = {}, std::string_view nameOverride = {});
     void HandleCreatureQueryOpcode(WorldPacket& recvPacket);
 
     void HandleGameObjectQueryOpcode(WorldPacket& recvPacket);

@@ -61,6 +61,29 @@ void ThreatReference::AddThreat(float amount)
     _mgr._needClientUpdate = true;
 }
 
+ThreatManager::Snapshot ThreatManager::CreateSnapshot() const
+{
+    Snapshot snapshot;
+    for (ThreatReference const* reference : GetUnsortedThreatList())
+        snapshot.ThreatenedByOwner.emplace_back(reference->GetVictim()->GetGUID(), reference->GetThreat());
+
+    for (auto const& [guid, reference] : GetThreatenedByMeList())
+        snapshot.ThreateningOwner.emplace_back(guid, reference->GetThreat());
+
+    return snapshot;
+}
+
+void ThreatManager::RestoreSnapshot(Snapshot const& snapshot)
+{
+    for (auto const& [guid, threat] : snapshot.ThreatenedByOwner)
+        if (Unit* victim = ObjectAccessor::GetUnit(*_owner, guid))
+            AddThreat(victim, threat, nullptr, true, true);
+
+    for (auto const& [guid, threat] : snapshot.ThreateningOwner)
+        if (Unit* aggressor = ObjectAccessor::GetUnit(*_owner, guid))
+            aggressor->GetThreatMgr().AddThreat(_owner, threat, nullptr, true, true);
+}
+
 void ThreatReference::ScaleThreat(float factor)
 {
     if (factor == 1.0f)
@@ -361,6 +384,16 @@ bool ThreatManager::IsThreateningAnyone(bool includeOffline) const
         if (pair.second->IsAvailable())
             return true;
     return false;
+}
+
+Unit* ThreatManager::GetHighestThreateningUnit() const
+{
+    ThreatReference const* highestThreat = nullptr;
+    for (auto const& pair : _threatenedByMe)
+        if (pair.second->IsAvailable() && (!highestThreat || pair.second->GetThreat() > highestThreat->GetThreat()))
+            highestThreat = pair.second;
+
+    return highestThreat ? highestThreat->GetOwner() : nullptr;
 }
 
 bool ThreatManager::IsThreateningTo(ObjectGuid const& who, bool includeOffline) const
