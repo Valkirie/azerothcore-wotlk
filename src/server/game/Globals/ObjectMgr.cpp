@@ -10577,18 +10577,28 @@ uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
 
     if (Realowner->IsCreature())
     {
-        uint32 AreaID       = creature->GetMap() ? creature->GetAreaId() : 0;
-        uint32 ZoneID       = creature->GetMap() ? creature->GetZoneId() : 0;
+        uint32 AreaID = creature->GetMap() ? creature->GetAreaId() : 0;
+        uint32 ZoneID = creature->GetMap() ? creature->GetZoneId() : 0;
 
         if (creature->isWorldBoss())
+        {
             level += sWorld->getIntConfig(CONFIG_WORLD_BOSS_LEVEL_DIFF);
+        }
         else
         {
             if (ZoneFlex const* thisZone = sObjectMgr->GetAreaZoneFlex(AreaID, ZoneID))
+            {
                 if (thisZone->IsLowLevel())
                     return creature->GetLevel(); // Low-level zones explicitly opt out of scaling.
 
-            level += creature->GetLevelVar();
+                // Apply the per-spawn level variation, if defined.
+                level += creature->GetLevelVar();
+
+                // Clamp the level to the zone's min/max range, if defined.
+                level = std::clamp(level, int32(thisZone->LevelRangeMin), int32(thisZone->LevelRangeMax));
+            }
+            else
+                level += creature->GetLevelVar();
         }
 
         if (sWorld->getBoolConfig(CONFIG_BOOL_SCALE_PVE_ITEMLEVEL))
