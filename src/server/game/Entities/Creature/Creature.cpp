@@ -3235,6 +3235,10 @@ void Creature::AllLootRemovedFromCorpse()
 
 uint8 Creature::getLevelForTarget(WorldObject const* target) const
 {
+    // Player-owned persistent pets retain their actual level instead of using target-relative scaling.
+    if (IsPet())
+        return GetLevel();
+
     if (!target->ToUnit())
         return GetLevel();
 
