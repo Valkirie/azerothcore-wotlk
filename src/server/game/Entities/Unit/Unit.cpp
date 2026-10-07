@@ -15514,10 +15514,9 @@ bool Unit::HandleSpellClick(Unit* clicker, int8 seatId)
 
         if (canBoard)
         {
-            uint32 hunterPetVehicleId = 202;
+            uint32 hunterPetVehicleId = 200;
 
             // Override the generic proxy query so the client displays the pet's name while mounted.
-            rider->GetSession()->SendCreatureQueryResponse(NPC_HUNTER_PET_VEHICLE_PROXY, {}, pet->GetName());
             if (TempSummon* proxy = rider->SummonCreature(NPC_HUNTER_PET_VEHICLE_PROXY, pet->GetPosition(), TEMPSUMMON_MANUAL_DESPAWN, 0, hunterPetVehicleId))
             {
                 // Preserve the persistent pet identity and reproduce its visible appearance on the proxy.
@@ -15533,25 +15532,6 @@ bool Unit::HandleSpellClick(Unit* clicker, int8 seatId)
                 proxy->SetMaxHealth(pet->GetMaxHealth());
                 proxy->SetHealth(pet->GetHealth());
                 proxy->SetObjectScale(1.2);
-
-                // Copy derived combat attributes because the proxy does not receive normal hunter pet scaling.
-                for (uint8 stat = STAT_STRENGTH; stat < MAX_STATS; ++stat)
-                    proxy->SetStat(Stats(stat), int32(pet->GetStat(Stats(stat))));
-
-                for (uint8 school = SPELL_SCHOOL_NORMAL; school < MAX_SPELL_SCHOOL; ++school)
-                    proxy->SetResistance(SpellSchools(school), int32(pet->GetResistance(SpellSchools(school))));
-
-                proxy->SetInt32Value(UNIT_FIELD_ATTACK_POWER, pet->GetInt32Value(UNIT_FIELD_ATTACK_POWER));
-                proxy->SetInt32Value(UNIT_FIELD_ATTACK_POWER_MODS, pet->GetInt32Value(UNIT_FIELD_ATTACK_POWER_MODS));
-                proxy->SetFloatValue(UNIT_FIELD_ATTACK_POWER_MULTIPLIER, pet->GetFloatValue(UNIT_FIELD_ATTACK_POWER_MULTIPLIER));
-
-                for (uint8 attack = BASE_ATTACK; attack < MAX_ATTACK; ++attack)
-                {
-                    WeaponAttackType attackType = WeaponAttackType(attack);
-                    proxy->SetAttackTime(attackType, pet->GetAttackTime(attackType));
-                    proxy->SetBaseWeaponDamage(attackType, MINDAMAGE, pet->GetWeaponDamageRange(attackType, MINDAMAGE));
-                    proxy->SetBaseWeaponDamage(attackType, MAXDAMAGE, pet->GetWeaponDamageRange(attackType, MAXDAMAGE));
-                }
 
                 // Mirror the pet's movement rates on the vehicle proxy, overriding run speed with
                 // level-based ground mount rates once the pet reaches the configured riding level.
@@ -15574,6 +15554,25 @@ bool Unit::HandleSpellClick(Unit* clicker, int8 seatId)
                     proxy->SetSpeed(UnitMoveType(moveType), moveSpeed);
                 }
 
+                // Copy derived combat attributes because the proxy does not receive normal hunter pet scaling.
+                for (uint8 stat = STAT_STRENGTH; stat < MAX_STATS; ++stat)
+                    proxy->SetStat(Stats(stat), int32(pet->GetStat(Stats(stat))));
+
+                for (uint8 school = SPELL_SCHOOL_NORMAL; school < MAX_SPELL_SCHOOL; ++school)
+                    proxy->SetResistance(SpellSchools(school), int32(pet->GetResistance(SpellSchools(school))));
+
+                proxy->SetInt32Value(UNIT_FIELD_ATTACK_POWER, pet->GetInt32Value(UNIT_FIELD_ATTACK_POWER));
+                proxy->SetInt32Value(UNIT_FIELD_ATTACK_POWER_MODS, pet->GetInt32Value(UNIT_FIELD_ATTACK_POWER_MODS));
+                proxy->SetFloatValue(UNIT_FIELD_ATTACK_POWER_MULTIPLIER, pet->GetFloatValue(UNIT_FIELD_ATTACK_POWER_MULTIPLIER));
+
+                for (uint8 attack = BASE_ATTACK; attack < MAX_ATTACK; ++attack)
+                {
+                    WeaponAttackType attackType = WeaponAttackType(attack);
+                    proxy->SetAttackTime(attackType, pet->GetAttackTime(attackType));
+                    proxy->SetBaseWeaponDamage(attackType, MINDAMAGE, pet->GetWeaponDamageRange(attackType, MINDAMAGE));
+                    proxy->SetBaseWeaponDamage(attackType, MAXDAMAGE, pet->GetWeaponDamageRange(attackType, MAXDAMAGE));
+                }
+
                 // Hunter pet abilities consume Focus; happiness remains persisted on the original Pet object.
                 proxy->setPowerType(POWER_FOCUS);
                 proxy->SetMaxPower(POWER_FOCUS, pet->GetMaxPower(POWER_FOCUS));
@@ -15588,6 +15587,10 @@ bool Unit::HandleSpellClick(Unit* clicker, int8 seatId)
                     if (action->IsActionBarForSpell() && action->GetAction())
                         proxy->m_spells[proxySpellSlot++] = action->GetAction();
                 }
+
+                // Add the "Gallop" spell to the vehicle action bar
+                // proxy->m_spells[proxySpellSlot] = 52268;
+
                 proxy->SetCreatureSpellCooldowns(pet->GetCreatureSpellCooldowns());
 
                 // Transfer threat before replacing the original pet with the controllable vehicle proxy.

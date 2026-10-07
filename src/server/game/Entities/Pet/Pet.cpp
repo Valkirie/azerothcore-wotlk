@@ -646,6 +646,9 @@ void Pet::setDeathState(DeathState s, bool /*despawn = false*/)                 
     }
     else if (getDeathState() == DeathState::Alive)
     {
+        if (GetOwnerGUID().IsPlayer())
+            sScriptMgr->OnPetAddToWorld(this);
+
         //RemoveUnitFlag(UNIT_FLAG_STUNNED);
         CastPetAuras(true);
     }
