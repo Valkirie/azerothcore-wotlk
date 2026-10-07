@@ -3235,22 +3235,11 @@ void Creature::AllLootRemovedFromCorpse()
 
 uint8 Creature::getLevelForTarget(WorldObject const* target) const
 {
-    // Player-owned persistent pets retain their actual level instead of using target-relative scaling.
-    if (IsPet())
+    Unit const* unitTarget = target->ToUnit();
+    if (!unitTarget)
         return GetLevel();
 
-    if (!target->ToUnit())
-        return GetLevel();
-
-    if (!isWorldBoss())
-        return sObjectMgr->GetLevelScaled(const_cast<Creature*>(this), const_cast<Unit*>(target->ToUnit()));
-
-    uint16 level = target->ToUnit()->GetLevel() + sWorld->getIntConfig(CONFIG_WORLD_BOSS_LEVEL_DIFF);
-    if (level < 1)
-        return 1;
-    if (level > 255)
-        return 255;
-    return uint8(level);
+    return sObjectMgr->GetLevelScaled(const_cast<Creature*>(this), const_cast<Unit*>(unitTarget));
 }
 
 std::string const& Creature::GetAIName() const

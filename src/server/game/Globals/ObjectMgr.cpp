@@ -10547,6 +10547,9 @@ uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
     if (!Realowner || !Realtarget) //If one of them doesn't exist
         return Realowner ? owner->GetLevel() : Realtarget ? target->GetLevel() : 0; // Missing ownership context: use the native level.
 
+    if (!IsScalable(owner, target))
+        return Realowner->GetLevel();
+
     Creature* creature;
     Player* player;
 
@@ -10588,7 +10591,6 @@ uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
         {
             if (ZoneFlex const* thisZone = sObjectMgr->GetAreaZoneFlex(AreaID, ZoneID))
             {
-                if (thisZone->IsLowLevel())
                     return creature->GetLevel(); // Low-level zones explicitly opt out of scaling.
 
                 // Apply the per-spawn level variation, if defined.
