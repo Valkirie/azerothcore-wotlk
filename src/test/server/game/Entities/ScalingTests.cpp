@@ -226,6 +226,40 @@ TEST_F(ScalingTests, CreatureScaling_Level)
     EXPECT_EQ(sObjectMgr->GetLevelScaled(player, creature), TestLowLevel);
 }
 
+TEST_F(ScalingTests, CreatureScaling_CritterRetainsNativeLevel)
+{
+    TestPlayer* player = CreatePlayer(1, TestLowLevel);
+    TestCreature* creature = CreateCreature(100, TestHighLevel);
+    CreatureTemplate* creatureTemplate = const_cast<CreatureTemplate*>(creature->GetCreatureTemplate());
+    uint32 originalType = creatureTemplate->type;
+    creatureTemplate->type = CREATURE_TYPE_CRITTER;
+
+    EXPECT_FALSE(sObjectMgr->IsScalable(creature, player));
+    EXPECT_EQ(creature->getLevelForTarget(player), TestHighLevel);
+    EXPECT_EQ(sObjectMgr->GetLevelScaled(creature, player), TestHighLevel);
+
+    creatureTemplate->type = originalType;
+}
+
+TEST_F(ScalingTests, CreatureScaling_WorldBossLevelIsClamped)
+{
+    TestPlayer* player = CreatePlayer(1, TestLowLevel);
+    TestCreature* creature = CreateCreature(100, TestHighLevel);
+    CreatureTemplate* creatureTemplate = const_cast<CreatureTemplate*>(creature->GetCreatureTemplate());
+    uint32 originalTypeFlags = creatureTemplate->type_flags;
+    creatureTemplate->type_flags |= CREATURE_TYPE_FLAG_BOSS_MOB;
+
+    EXPECT_CALL(*GetWorldMock(), getIntConfig(CONFIG_WORLD_BOSS_LEVEL_DIFF))
+        .WillOnce(::testing::Return(-100))
+        .WillOnce(::testing::Return(300));
+    EXPECT_CALL(*GetWorldMock(), getBoolConfig(CONFIG_BOOL_SCALE_PVE_ITEMLEVEL)).Times(0);
+
+    EXPECT_EQ(creature->getLevelForTarget(player), 1);
+    EXPECT_EQ(creature->getLevelForTarget(player), std::numeric_limits<uint8>::max());
+
+    creatureTemplate->type_flags = originalTypeFlags;
+}
+
 TEST_F(ScalingTests, CreatureScaling_Health)
 {
     TestPlayer* player = CreatePlayer(1, TestLowLevel);
