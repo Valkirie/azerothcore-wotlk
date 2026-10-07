@@ -15543,9 +15543,9 @@ bool Unit::HandleSpellClick(Unit* clicker, int8 seatId)
                     {
                     case MOVE_RUN:
                     {
-                        if (pet->GetLevel() >= 40)
+                        if (pet->GetLevel() >= sWorld->getIntConfig(CONFIG_RIDING_LEVEL_JOURNEYMAN))
                             moveSpeed = 2.0f;
-                        else if (pet->GetLevel() >= sWorld->getIntConfig(CONFIG_MIN_MOUNT_LEVEL))
+                        else if (pet->GetLevel() >= sWorld->getIntConfig(CONFIG_RIDING_LEVEL_APPRENTICE))
                             moveSpeed = 1.6f;
                     }
                     break;

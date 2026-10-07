@@ -2125,13 +2125,37 @@ EnablePlayerSettings = 0
 MaxPlayerLevel = 80
 
 #
-#    MinMountLevel
+#    RidingLevelApprentive
 #        Description: Level requirement for apprentice riding, first-tier class mounts, and the
 #                     apprentice riding information mail.
 #        Range:       1-MaxPlayerLevel
 #        Default:     20
 
-MinMountLevel = 20
+RidingLevelApprentive = 20
+
+#
+#    RidingLevelJourneyman
+#        Description: Level requirement for journeyman riding.
+#        Range:       1-MaxPlayerLevel
+#        Default:     40
+
+RidingLevelJourneyman = 40
+
+#
+#    RidingLevelExpert
+#        Description: Level requirement for expert riding.
+#        Range:       1-MaxPlayerLevel
+#        Default:     60
+
+RidingLevelExpert = 60
+
+#
+#    RidingLevelArtisan
+#        Description: Level requirement for artisan riding.
+#        Range:       1-MaxPlayerLevel
+#        Default:     70
+
+RidingLevelArtisan = 70
 
 #
 #    MinDualSpecLevel

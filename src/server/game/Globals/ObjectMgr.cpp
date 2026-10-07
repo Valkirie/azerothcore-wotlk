@@ -103,7 +103,7 @@ namespace
         }
     }
 
-    bool IsFirstTierMountTrainerSpell(uint32 spellId)
+    uint8 GetMountTrainerSpellLevel(uint32 spellId, uint8 defaultLevel)
     {
         switch (spellId)
         {
@@ -112,11 +112,18 @@ namespace
             case 5785:
             case 13819:
             case 13820:
+            case 33388:
             case 34768:
             case 34769:
-                return true;
+                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_APPRENTICE));
+            case 33391:
+                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_JOURNEYMAN));
+            case 34090:
+                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_EXPERT));
+            case 34091:
+                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_ARTISAN));
             default:
-                return false;
+                return defaultLevel;
         }
     }
 }
@@ -5210,7 +5217,7 @@ void ObjectMgr::LoadQuests()
 
         Quest* newQuest = new Quest(fields);
         if (IsFirstTierClassMountQuest(newQuest->GetQuestId()))
-            newQuest->MinLevel = sWorld->getIntConfig(CONFIG_MIN_MOUNT_LEVEL);
+            newQuest->MinLevel = sWorld->getIntConfig(CONFIG_RIDING_LEVEL_APPRENTICE);
 
         _questTemplates[newQuest->GetQuestId()] = newQuest;
     } while (result->NextRow());
@@ -9986,7 +9993,7 @@ void ObjectMgr::LoadMailLevelRewards()
         uint32 senderEntry    = fields[3].Get<uint32>();
 
         if (IsApprenticeRidingMailTemplate(mailTemplateId))
-            level = uint8(sWorld->getIntConfig(CONFIG_MIN_MOUNT_LEVEL));
+            level = uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_APPRENTICE));
 
         if (level > MAX_LEVEL)
         {
@@ -10046,9 +10053,7 @@ void ObjectMgr::LoadTrainers()
             spell.ReqAbility[1] = fields[6].Get<uint32>();
             spell.ReqAbility[2] = fields[7].Get<uint32>();
             spell.ReqLevel = fields[8].Get<uint8>();
-
-            if (IsFirstTierMountTrainerSpell(spell.SpellId))
-                spell.ReqLevel = uint8(sWorld->getIntConfig(CONFIG_MIN_MOUNT_LEVEL));
+            spell.ReqLevel = GetMountTrainerSpellLevel(spell.SpellId, spell.ReqLevel);
 
             SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spell.SpellId);
             if (!spellInfo)
