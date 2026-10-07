@@ -10591,8 +10591,6 @@ uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
         {
             if (ZoneFlex const* thisZone = sObjectMgr->GetAreaZoneFlex(AreaID, ZoneID))
             {
-                    return creature->GetLevel(); // Low-level zones explicitly opt out of scaling.
-
                 // Apply the per-spawn level variation, if defined.
                 level += creature->GetLevelVar();
 
@@ -10615,10 +10613,8 @@ uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
         }
     }
 
-    if (level < 1 || level > 200)
-        return 1;
-
-    return uint8(level);
+    // Clamp the level to the valid range for a unit (1-255).
+    return uint8(std::clamp(level, 1, int32(std::numeric_limits<uint8>::max())));
 }
 
 float ObjectMgr::GetCreatureBaseStatRatio(Creature const* creature, uint8 scaledLevel, SpellType scalingType) const
@@ -10714,7 +10710,7 @@ bool ObjectMgr::IsScalable(Unit* const owner, Unit* const target) const //RCS
     if (creature->IsCivilian()) //Might need to be removed !
         return false;
 
-    if (creature->GetCreatureType() == CREATURE_TYPE_CRITTER)
+    if (creature->IsCritter())
         return false;
 
     if (ZoneFlex const* thisLocation = sObjectMgr->GetAreaZoneFlex(creature->GetAreaId(), creature->GetZoneId()))
