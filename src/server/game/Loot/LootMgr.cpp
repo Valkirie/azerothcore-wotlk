@@ -91,9 +91,6 @@ uint32 LootStore::LoadScaledLoot(uint32 itemId, uint32 playerLevel, Player* play
     if (!proto)
         return itemId;
 
-    if (player && sObjectMgr->IsNotScaledLootFromVendor(itemId))
-        return itemId;
-
     if (proto->Class == ITEM_CLASS_CONSUMABLE || proto->Class == ITEM_CLASS_CONTAINER || proto->Class == ITEM_CLASS_MISC)
     {
         if (std::abs(int32(playerLevel) - int32(proto->RequiredLevel)) < 5)

@@ -10993,7 +10993,15 @@ bool Player::BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uin
 
     VendorItem const* crItem = vItems->GetItem(vendorslot);
     // store diff item (cheating)
-    if (!crItem || crItem->item != item)
+    if (!crItem)
+    {
+        SendBuyError(BUY_ERR_CANT_FIND_ITEM, creature, item, 0);
+        return false;
+    }
+
+    bool isNotScaledLootFromVendor = sObjectMgr->IsNotScaledLootFromVendor(crItem->item);
+    uint32 expectedItem = isNotScaledLootFromVendor ? crItem->item : LootStore::LoadScaledLoot(crItem->item, this);
+    if (expectedItem != item)
     {
         SendBuyError(BUY_ERR_CANT_FIND_ITEM, creature, item, 0);
         return false;
