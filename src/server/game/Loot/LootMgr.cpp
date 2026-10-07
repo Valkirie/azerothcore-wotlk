@@ -93,9 +93,11 @@ uint32 LootStore::LoadScaledLoot(uint32 itemId, uint32 playerLevel, Player* play
 
     if (proto->Class == ITEM_CLASS_CONSUMABLE || proto->Class == ITEM_CLASS_CONTAINER || proto->Class == ITEM_CLASS_MISC)
     {
-        if (std::abs(int32(playerLevel) - int32(proto->RequiredLevel)) < 5)
-            return itemId;
-        return sObjectMgr->GetItemLootScale(itemId, uint8(playerLevel));
+        uint32 scaledItemId = sObjectMgr->GetItemLootScale(itemId, uint8(playerLevel));
+        if (scaledItemId != itemId)
+            return scaledItemId;
+
+        return itemId;
     }
 
     if (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR)
