@@ -755,6 +755,7 @@ struct ZoneFlex
     uint32 areaFlags;
 
     bool IsLowLevel() const { return (areaFlags & AREA_FLAG_LOWLEVEL) != 0; }
+    bool IsScalingDisabled() const { return (areaFlags & (AREA_FLAG_LOWLEVEL | AREA_FLAG_CAPITAL | AREA_FLAG_CITY)) != 0; }
 };
 
 typedef std::unordered_map<uint32, ZoneFlex> ZoneFlexMap;

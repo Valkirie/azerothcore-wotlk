@@ -339,6 +339,19 @@ TEST_F(ScalingTests, EvP_DoT)
     EXPECT_FLOAT_EQ(Scale(CreatePlayer(1, TestLowLevel), CreatePlayer(2, TestHighLevel, TEST_FACTION_HOSTILE_TO_ALL), 25.0f), 100.0f);
 }
 
+TEST_F(ScalingTests, AreaScaling_DisabledLocationFlags)
+{
+    ZoneFlex scalable{ "Scalable", 1, 0, 1, 80, 0 };
+    ZoneFlex lowLevel{ "Low Level", 2, 0, 1, 10, AREA_FLAG_LOWLEVEL };
+    ZoneFlex capital{ "Capital", 3, 0, 1, 80, AREA_FLAG_CAPITAL };
+    ZoneFlex city{ "City", 4, 0, 1, 80, AREA_FLAG_CITY };
+
+    EXPECT_FALSE(scalable.IsScalingDisabled());
+    EXPECT_TRUE(lowLevel.IsScalingDisabled());
+    EXPECT_TRUE(capital.IsScalingDisabled());
+    EXPECT_TRUE(city.IsScalingDisabled());
+}
+
 TEST_F(ScalingTests, AreaScaling_InheritsParentUnlessChildOverrides)
 {
     constexpr uint32 ParentZoneId = 12;

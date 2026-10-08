@@ -10719,7 +10719,7 @@ bool ObjectMgr::IsScalable(Unit* const owner, Unit* const target) const //RCS
         return false;
 
     if (ZoneFlex const* thisLocation = sObjectMgr->GetAreaZoneFlex(creature->GetAreaId(), creature->GetZoneId()))
-        return !thisLocation->IsLowLevel();
+        return !thisLocation->IsScalingDisabled();
 
     return true;
 }
