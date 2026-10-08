@@ -207,7 +207,7 @@ void WorldSession::HandleLfgPlayerLockInfoRequestOpcode(WorldPacket& /*recvData*
                 for (uint8 i = 0; i < QUEST_REWARDS_COUNT; ++i)
                     if (uint32 itemId = quest->RewardItemId[i])
                     {
-                        itemId = LootStore::LoadScaledLoot(itemId, rewardLevel, GetPlayer());
+                        itemId = LootStore::LoadScaledLoot(itemId, GetPlayer(), rewardLevel);
                         ItemTemplate const* item = sObjectMgr->GetItemTemplate(itemId);
                         data << uint32(itemId);
                         data << uint32(item ? item->DisplayInfoID : 0);
@@ -505,7 +505,7 @@ void WorldSession::SendLfgPlayerReward(lfg::LfgPlayerRewardData const& rewardDat
         for (uint8 i = 0; i < QUEST_REWARDS_COUNT; ++i)
             if (uint32 itemId = rewardData.quest->RewardItemId[i])
             {
-                itemId = LootStore::LoadScaledLoot(itemId, rewardLevel, GetPlayer());
+                itemId = LootStore::LoadScaledLoot(itemId, GetPlayer(), rewardLevel);
                 ItemTemplate const* item = sObjectMgr->GetItemTemplate(itemId);
                 data << uint32(itemId);
                 data << uint32(item ? item->DisplayInfoID : 0);

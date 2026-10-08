@@ -2259,7 +2259,7 @@ public:
             uint32 minimumLevel = std::max<uint32>(itemTemplate->RequiredLevel + 1, player->GetLevel() > 10 ? player->GetLevel() - 9 : 1);
             for (uint32 level = minimumLevel; level <= player->GetLevel(); ++level)
             {
-                uint32 scaledItemId = LootStore::LoadScaledLoot(parentItemId, level, player);
+                uint32 scaledItemId = LootStore::LoadScaledLoot(parentItemId, player, level);
                 ItemTemplate const* scaledTemplate = sObjectMgr->GetItemTemplate(scaledItemId);
                 if (!scaledTemplate || scaledItemId == item->GetEntry())
                     continue;
@@ -2349,7 +2349,7 @@ private:
 
         uint32 scaledItemId = selection.ScaledItems[scaledItemIndex];
         ItemTemplate const* scaledTemplate = sObjectMgr->GetItemTemplate(scaledItemId);
-        if (!scaledTemplate || LootStore::LoadScaledLoot(sObjectMgr->GetItemParentEntry(sourceItem->GetEntry()), scaledTemplate->RequiredLevel, player) != scaledItemId)
+        if (!scaledTemplate || LootStore::LoadScaledLoot(sObjectMgr->GetItemParentEntry(sourceItem->GetEntry()), player, scaledTemplate->RequiredLevel) != scaledItemId)
             return false;
 
         uint32 cost = GetTokenCost(sourceItem->GetTemplate(), scaledTemplate);

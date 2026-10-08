@@ -242,7 +242,6 @@ public:
     [[nodiscard]] bool IsRatesAllowed() const { return m_ratesAllowed; }
 
     static uint32 LoadScaledLoot(uint32 itemId, Player* player, uint32 forcedLevel = 0);
-    static uint32 LoadScaledLoot(uint32 itemId, uint32 playerLevel, Player* player = nullptr);
 protected:
     uint32 LoadLootTable();
     void Clear();

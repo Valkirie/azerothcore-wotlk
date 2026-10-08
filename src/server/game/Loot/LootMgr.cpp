@@ -77,14 +77,14 @@ void LoadRochenoireSmartLootTable(char const* tableName)
 
 uint32 LootStore::LoadScaledLoot(uint32 itemId, Player* player, uint32 forcedLevel)
 {
-    uint32 level = forcedLevel ? forcedLevel : (player ? player->getAreaZoneLevel() : 0);
-    return LoadScaledLoot(itemId, level, player);
-}
-
-uint32 LootStore::LoadScaledLoot(uint32 itemId, uint32 playerLevel, Player* player)
-{
-    if (!playerLevel)
+    if (!player || !player->hasAreaZoneLevel())
         return itemId;
+
+    uint32 playerLevel = forcedLevel ? forcedLevel : player->getAreaZoneLevel();
+    if (forcedLevel)
+        if (ZoneFlex const* location = sObjectMgr->GetAreaZoneFlex(player->GetAreaId(), player->GetZoneId()))
+            if (forcedLevel < location->LevelRangeMin || forcedLevel > location->LevelRangeMax)
+                return itemId;
 
     playerLevel = std::min(playerLevel, uint32(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
@@ -500,7 +500,7 @@ void LootItem::ScaleForPlayer(uint32 playerLevel, Player* player)
     if (!player || loot_level == playerLevel)
         return;
 
-    uint32 scaledItemId = LootStore::LoadScaledLoot(itemid, playerLevel, player);
+    uint32 scaledItemId = LootStore::LoadScaledLoot(itemid, player, playerLevel);
     if (scaledItemId == itemid)
         return;
 
@@ -522,7 +522,7 @@ void LootItem::GetScaledValuesForPlayer(uint32 playerLevel, Player* player, uint
     if (!player || loot_level == playerLevel)
         return;
 
-    scaledItemId = LootStore::LoadScaledLoot(itemid, playerLevel, player);
+    scaledItemId = LootStore::LoadScaledLoot(itemid, player, playerLevel);
     if (scaledItemId != itemid)
     {
         int32 candidateRandomProperty = has_random_property ? Item::GenerateItemRandomPropertyIdForFamily(scaledItemId, randomPropertyFamily, randomSuffixFamily) : 0;

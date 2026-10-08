@@ -494,7 +494,7 @@ bool Player::CanRewardQuest(Quest const* quest, uint32 reward, bool msg)
     {
         if (quest->RewardChoiceItemId[reward])
         {
-            uint32 itemId = LootStore::LoadScaledLoot(quest->RewardChoiceItemId[reward], rewardLevel, this);
+            uint32 itemId = LootStore::LoadScaledLoot(quest->RewardChoiceItemId[reward], this, rewardLevel);
             InventoryResult res = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardChoiceItemCount[reward]);
             if (res != EQUIP_ERR_OK)
             {
@@ -510,7 +510,7 @@ bool Player::CanRewardQuest(Quest const* quest, uint32 reward, bool msg)
         {
             if (quest->RewardItemId[i])
             {
-                uint32 itemId = LootStore::LoadScaledLoot(quest->RewardItemId[i], rewardLevel, this);
+                uint32 itemId = LootStore::LoadScaledLoot(quest->RewardItemId[i], this, rewardLevel);
                 InventoryResult res = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardItemIdCount[i]);
                 if (res != EQUIP_ERR_OK)
                 {
@@ -692,7 +692,6 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     // Repeatable quests (not time-based reset ones) should not give XP on subsequent completions
     uint32 XP = rewarded ? 0 : CalculateQuestRewardXP(quest);
     uint8 rewardLevel = CalculateQuestRewardLevel(rewardWithMoney ? 0 : XP);
-
     for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
     {
         if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(quest->RequiredItemId[i]))
@@ -722,7 +721,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     {
         if (uint32 itemId = quest->RewardChoiceItemId[reward])
         {
-            itemId = LootStore::LoadScaledLoot(itemId, rewardLevel, this);
+            itemId = LootStore::LoadScaledLoot(itemId, this, rewardLevel);
             ItemPosCountVec dest;
             if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardChoiceItemCount[reward]) == EQUIP_ERR_OK)
             {
@@ -744,7 +743,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
         {
             if (uint32 itemId = quest->RewardItemId[i])
             {
-                itemId = LootStore::LoadScaledLoot(itemId, rewardLevel, this);
+                itemId = LootStore::LoadScaledLoot(itemId, this, rewardLevel);
                 ItemPosCountVec dest;
                 if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardItemIdCount[i]) == EQUIP_ERR_OK)
                 {

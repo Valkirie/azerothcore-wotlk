@@ -1901,7 +1901,7 @@ public:
         }
 
         if (level)
-            itemId = LootStore::LoadScaledLoot(sObjectMgr->GetItemParentEntry(itemId), *level, playerTarget);
+            itemId = LootStore::LoadScaledLoot(sObjectMgr->GetItemParentEntry(itemId), playerTarget, *level);
 
         // Adding items
         uint32 noSpaceForCount = 0;

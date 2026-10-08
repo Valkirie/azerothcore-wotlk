@@ -21,6 +21,7 @@
 #include "gtest/gtest.h"
 #include <array>
 #include <iostream>
+#include <optional>
 
 namespace
 {
@@ -233,7 +234,42 @@ TEST_F(LootScalingTest, QuestRewardScalesToLevelReachedByRewardXP)
 	uint8 rewardLevel = player->CalculateQuestRewardLevel(100);
 
 	EXPECT_EQ(rewardLevel, HighLevel);
-	EXPECT_EQ(LootStore::LoadScaledLoot(PlainItemId, rewardLevel, player), ScaledItemId(PlainItemId, HighLevel));
+	EXPECT_EQ(LootStore::LoadScaledLoot(PlainItemId, player, rewardLevel), ScaledItemId(PlainItemId, HighLevel));
+}
+
+TEST_F(LootScalingTest, PlayerAwareScalingKeepsBaseItemInLowLevelArea)
+{
+	std::optional<ZoneFlex> originalLocation;
+	if (ZoneFlex const* location = sObjectMgr->GetZoneFlexForTest(0))
+		originalLocation = *location;
+
+	sObjectMgr->SetZoneFlexForTest({ "Low Level", 0, 0, 1, 10, AREA_FLAG_LOWLEVEL });
+	TestPlayer* player = CreatePlayer(1, 5);
+
+	EXPECT_EQ(LootStore::LoadScaledLoot(PlainItemId, player), PlainItemId);
+
+	if (originalLocation)
+		sObjectMgr->SetZoneFlexForTest(*originalLocation);
+	else
+		sObjectMgr->RemoveZoneFlexForTest(0);
+}
+
+TEST_F(LootScalingTest, ForcedLevelMustBeWithinAreaBounds)
+{
+	std::optional<ZoneFlex> originalLocation;
+	if (ZoneFlex const* location = sObjectMgr->GetZoneFlexForTest(0))
+		originalLocation = *location;
+
+	sObjectMgr->SetZoneFlexForTest({ "Scalable", 0, 0, 10, LowLevel, 0 });
+	TestPlayer* player = CreatePlayer(1, LowLevel);
+
+	EXPECT_EQ(LootStore::LoadScaledLoot(PlainItemId, player, LowLevel), ScaledItemId(PlainItemId, LowLevel));
+	EXPECT_EQ(LootStore::LoadScaledLoot(PlainItemId, player, HighLevel), PlainItemId);
+
+	if (originalLocation)
+		sObjectMgr->SetZoneFlexForTest(*originalLocation);
+	else
+		sObjectMgr->RemoveZoneFlexForTest(0);
 }
 
 TEST_F(LootScalingTest, SoloRandomPropertyScalesWithinGeneratedFamily)

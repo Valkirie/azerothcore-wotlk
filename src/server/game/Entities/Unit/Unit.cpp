@@ -142,7 +142,7 @@ bool Unit::hasAreaZoneLevel(uint32 AreaID, uint32 ZoneID) const
 
     if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(area, zone))
     {
-        if (zoneFlex->IsLowLevel())
+        if (zoneFlex->IsScalingDisabled())
             return false;
 
         if (level < zoneFlex->LevelRangeMin || level > zoneFlex->LevelRangeMax)
