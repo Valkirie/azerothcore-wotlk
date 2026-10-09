@@ -254,7 +254,7 @@ TEST_F(LootScalingTest, PlayerAwareScalingKeepsBaseItemInLowLevelArea)
 		sObjectMgr->RemoveZoneFlexForTest(0);
 }
 
-TEST_F(LootScalingTest, ForcedLevelMustBeWithinAreaBounds)
+TEST_F(LootScalingTest, ForcedLevelIsClampedToAreaBounds)
 {
 	std::optional<ZoneFlex> originalLocation;
 	if (ZoneFlex const* location = sObjectMgr->GetZoneFlexForTest(0))
@@ -264,7 +264,7 @@ TEST_F(LootScalingTest, ForcedLevelMustBeWithinAreaBounds)
 	TestPlayer* player = CreatePlayer(1, LowLevel);
 
 	EXPECT_EQ(LootStore::LoadScaledLoot(PlainItemId, player, LowLevel), ScaledItemId(PlainItemId, LowLevel));
-	EXPECT_EQ(LootStore::LoadScaledLoot(PlainItemId, player, HighLevel), PlainItemId);
+    EXPECT_EQ(LootStore::LoadScaledLoot(PlainItemId, player, HighLevel), ScaledItemId(PlainItemId, LowLevel));
 
 	if (originalLocation)
 		sObjectMgr->SetZoneFlexForTest(*originalLocation);
