@@ -1,0 +1,7 @@
+## Interface: 30300
+## Title: Rochenoire Scaled Items
+## Notes: Adds a description to scaled item tooltips.
+## Author: Rochenoire
+## Version: 1.0.0
+
+RochenoireScaledItems.lua
