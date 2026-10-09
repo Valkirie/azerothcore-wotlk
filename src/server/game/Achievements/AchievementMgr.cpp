@@ -353,7 +353,7 @@ bool AchievementCriteriaData::Meets(uint32 criteria_id, Player const* source, Un
         case ACHIEVEMENT_CRITERIA_DATA_TYPE_T_LEVEL:
             if (!target)
                 return false;
-            return target->GetLevel() >= level.minlevel;
+            return target->getLevelForTarget(source) >= level.minlevel;
         case ACHIEVEMENT_CRITERIA_DATA_TYPE_T_GENDER:
             if (!target)
                 return false;

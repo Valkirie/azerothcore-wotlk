@@ -161,6 +161,15 @@ public:
     int32  itemRandomPropId;
     uint32 itemRandomSuffix;
     uint32 itemCount;
+    struct ItemInfo
+    {
+        uint32 itemId;
+        uint32 randomSuffix;
+        int32 randomPropertyId;
+    };
+    typedef std::map<ObjectGuid, ItemInfo> PlayerItemInfo;
+    mutable PlayerItemInfo playerItemInfo;
+    ItemInfo const& GetItemInfoForPlayer(Player* player) const;
     typedef std::map<ObjectGuid, RollVote> PlayerVote;
     PlayerVote playerVote;                              //vote position correspond with player position (in group)
     uint8 totalPlayersRolling;

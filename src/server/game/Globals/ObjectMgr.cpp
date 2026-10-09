@@ -24,6 +24,7 @@
 #include "Config.h"
 #include "Containers.h"
 #include "CreatureAIFactory.h"
+#include "DBCStores.h"
 #include "DBCStructure.h"
 #include "DatabaseEnv.h"
 #include "DisableMgr.h"
@@ -60,6 +61,72 @@
 ScriptMapMap sSpellScripts;
 ScriptMapMap sEventScripts;
 ScriptMapMap sWaypointScripts;
+
+namespace
+{
+    bool IsApprenticeRidingMailTemplate(uint32 mailTemplateId)
+    {
+        // Riding Training Pamphlet
+        switch (mailTemplateId)
+        {
+            case 224:
+            case 225:
+            case 226:
+            case 227:
+            case 228:
+            case 229:
+            case 230:
+            case 231:
+            case 232:
+            case 233:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool IsFirstTierClassMountQuest(uint32 questId)
+    {
+        switch (questId)
+        {
+            case 1661:
+            case 3631:
+            case 4485:
+            case 4486:
+            case 4487:
+            case 4488:
+            case 4489:
+            case 4490:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    uint8 GetMountTrainerSpellLevel(uint32 spellId, uint8 defaultLevel)
+    {
+        switch (spellId)
+        {
+            case 1710:
+            case 5784:
+            case 5785:
+            case 13819:
+            case 13820:
+            case 33388:
+            case 34768:
+            case 34769:
+                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_APPRENTICE));
+            case 33391:
+                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_JOURNEYMAN));
+            case 34090:
+                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_EXPERT));
+            case 34091:
+                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_ARTISAN));
+            default:
+                return defaultLevel;
+        }
+    }
+}
 
 std::string GetScriptsTableNameByType(ScriptsType type)
 {
@@ -3936,6 +4003,23 @@ ItemTemplate const* ObjectMgr::GetItemTemplate(uint32 entry)
     return entry < _itemTemplateStoreFast.size() ? _itemTemplateStoreFast[entry] : nullptr;
 }
 
+void ObjectMgr::SetItemTemplateForTest(ItemTemplate const& itemTemplate)
+{
+    _itemTemplateStore[itemTemplate.ItemId] = itemTemplate;
+    if (_itemTemplateStoreFast.size() <= itemTemplate.ItemId)
+        _itemTemplateStoreFast.resize(itemTemplate.ItemId + 1, nullptr);
+
+    for (auto& [entry, storedTemplate] : _itemTemplateStore)
+        _itemTemplateStoreFast[entry] = &storedTemplate;
+}
+
+void ObjectMgr::RemoveItemTemplateForTest(uint32 entry)
+{
+    _itemTemplateStore.erase(entry);
+    if (entry < _itemTemplateStoreFast.size())
+        _itemTemplateStoreFast[entry] = nullptr;
+}
+
 void ObjectMgr::LoadItemSetNameLocales()
 {
     uint32 oldMSTime = getMSTime();
@@ -5132,6 +5216,9 @@ void ObjectMgr::LoadQuests()
         Field* fields = result->Fetch();
 
         Quest* newQuest = new Quest(fields);
+        if (IsFirstTierClassMountQuest(newQuest->GetQuestId()))
+            newQuest->MinLevel = sWorld->getIntConfig(CONFIG_RIDING_LEVEL_APPRENTICE);
+
         _questTemplates[newQuest->GetQuestId()] = newQuest;
     } while (result->NextRow());
 
@@ -9905,6 +9992,9 @@ void ObjectMgr::LoadMailLevelRewards()
         uint32 mailTemplateId = fields[2].Get<uint32>();
         uint32 senderEntry    = fields[3].Get<uint32>();
 
+        if (IsApprenticeRidingMailTemplate(mailTemplateId))
+            level = uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_APPRENTICE));
+
         if (level > MAX_LEVEL)
         {
             LOG_ERROR("sql.sql", "Table `mail_level_reward` have data for level {} that more supported by client ({}), ignoring.", level, MAX_LEVEL);
@@ -9963,6 +10053,7 @@ void ObjectMgr::LoadTrainers()
             spell.ReqAbility[1] = fields[6].Get<uint32>();
             spell.ReqAbility[2] = fields[7].Get<uint32>();
             spell.ReqLevel = fields[8].Get<uint8>();
+            spell.ReqLevel = GetMountTrainerSpellLevel(spell.SpellId, spell.ReqLevel);
 
             SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spell.SpellId);
             if (!spellInfo)
@@ -10446,6 +10537,746 @@ bool ObjectMgr::IsVendorItemValid(uint32 vendor_entry, uint32 item_id, uint32 ma
     return true;
 }
 
+// Rochenoire custom scaling and smart-loot support.
+// Creature levels are adjusted from zone ranges and per-spawn overrides, while
+// damage, armor, and consumable loot are normalized for the player's progression.
+uint8 ObjectMgr::GetLevelScaled(Unit* owner, Unit* target) const
+{
+    if (!owner || !target)
+        return owner ? owner->GetLevel() : target ? target->GetLevel() : 0; // No target context is available, so preserve the unit's native level.
+
+    //We look for owner level relative to the target
+    Unit* Realowner = owner->GetCharmerOrOwnerOrSelf(); //GetBeneficiary();
+    Unit* Realtarget = target->GetCharmerOrOwnerOrSelf(); //GetBeneficiary();
+
+    if (!Realowner || !Realtarget) //If one of them doesn't exist
+        return Realowner ? owner->GetLevel() : Realtarget ? target->GetLevel() : 0; // Missing ownership context: use the native level.
+
+    if (!IsScalable(owner, target))
+        return Realowner->GetLevel();
+
+    Creature* creature;
+    Player* player;
+
+    if (Realowner->IsCreature() && Realtarget->IsPlayer())
+    {
+        //If we want the creature level relative to a player,
+        //the player level is returned.
+
+        creature = Realowner->ToCreature();
+        player = Realtarget->ToPlayer();
+    }
+    else if (Realtarget->IsCreature() && Realowner->IsPlayer())
+    {
+        //If we want the player level relative to a creature,
+        //the player level is still returned.
+
+        player = Realowner->ToPlayer();
+        creature = Realtarget->ToCreature();
+    }
+    else if (Realtarget->IsPlayer() && Realowner->IsPlayer()) //PVP case : change nothing
+    {
+        return Realowner->GetLevel(); // PvP level is not remapped relative to another target.
+    }
+    else // eVe case : change nothing
+        return Realowner->GetLevel(); // Non-creature interactions do not use creature target scaling.
+
+    int32 level = player->GetLevel(); // Scaling is anchored to the player's actual progression level.
+
+    if (Realowner->IsCreature())
+    {
+        uint32 AreaID = creature->GetMap() ? creature->GetAreaId() : 0;
+        uint32 ZoneID = creature->GetMap() ? creature->GetZoneId() : 0;
+
+        if (creature->isWorldBoss())
+        {
+            level += sWorld->getIntConfig(CONFIG_WORLD_BOSS_LEVEL_DIFF);
+        }
+        else
+        {
+            if (ZoneFlex const* thisZone = sObjectMgr->GetAreaZoneFlex(AreaID, ZoneID))
+            {
+                // Apply the per-spawn level variation, if defined.
+                level += creature->GetLevelVar();
+
+                // Clamp the level to the zone's min/max range, if defined.
+                level = std::clamp(level, int32(thisZone->LevelRangeMin), int32(thisZone->LevelRangeMax));
+            }
+            else
+                level += creature->GetLevelVar();
+        }
+
+        if (sWorld->getBoolConfig(CONFIG_BOOL_SCALE_PVE_ITEMLEVEL))
+        {
+            float expectedItemLevel = float(sObjectMgr->GetPlayerExpectedItemLevel(player->GetLevel()));
+            if (expectedItemLevel > 0.0f)
+            {
+                float itemLevelModifier = float(player->GetItemLevel()) / expectedItemLevel;
+                itemLevelModifier = std::clamp(itemLevelModifier, sWorld->getRate(RATE_SCALE_PVE_ITEMLEVEL), 1.0f);
+                level = int32(std::floor(float(level) * itemLevelModifier));
+            }
+        }
+    }
+
+    // Clamp the level to the valid range for a unit (1-255).
+    return uint8(std::clamp(level, 1, int32(std::numeric_limits<uint8>::max())));
+}
+
+float ObjectMgr::GetCreatureBaseStatRatio(Creature const* creature, uint8 scaledLevel, SpellType scalingType) const
+{
+    if (!creature || !creature->GetLevel() || !scaledLevel || creature->GetLevel() == scaledLevel)
+        return 1.0f;
+
+    CreatureTemplate const* cinfo = creature->GetCreatureTemplate();
+    if (!cinfo)
+        return 1.0f;
+
+    CreatureBaseStats const* originStats = sObjectMgr->GetCreatureBaseStats(creature->GetLevel(), cinfo->unit_class);
+    CreatureBaseStats const* scaledStats = sObjectMgr->GetCreatureBaseStats(scaledLevel, cinfo->unit_class);
+    if (!originStats || !scaledStats)
+        return 1.0f;
+
+    double originValue = scalingType == SPELLTYPE_POWER
+        ? originStats->BaseMana * cinfo->ModMana
+        : originStats->BaseHealth[cinfo->expansion] * cinfo->ModHealth;
+    double scaledValue = scalingType == SPELLTYPE_POWER
+        ? scaledStats->BaseMana * cinfo->ModMana
+        : scaledStats->BaseHealth[cinfo->expansion] * cinfo->ModHealth;
+
+    if (originValue <= 0.0 || scaledValue <= 0.0)
+        return 1.0f;
+
+    return float(scaledValue / originValue);
+}
+
+bool ObjectMgr::IsScalable(Unit* const owner, Unit* const target) const //RCS
+{
+    if (!owner || !target || target->GetTypeId() == TYPEID_DYNAMICOBJECT)
+        return false;
+
+    // Mind Controlled creatures should not have scaled damage dealt/received.
+    if (owner->IsCreature() && target->IsCreature())
+        if (owner->IsCharmed() || target->IsCharmed())
+            return false;
+
+    Unit* Realowner = owner->GetCharmerOrOwnerOrSelf(); //GetBeneficiary();
+    Unit* Realtarget = target->GetCharmerOrOwnerOrSelf(); //GetBeneficiary();
+
+    if (Realowner->IsCreature() && Realtarget->IsCreature())  //No EvE scaling
+        return false;
+
+    if (Realowner->GetGUID() == Realtarget->GetGUID())  //No self scaling
+        return false;
+
+    Creature* creature;
+    Player* player;
+
+    if (Realowner->IsCreature() && Realtarget->IsPlayer())
+    {
+        creature = (Creature*)Realowner;
+        player = (Player*)Realtarget;
+
+        if (Realowner->GetMap()->IsRaidOrHeroicDungeon()) //No PVE scaling in raid
+            return false;
+    }
+    else if (Realtarget->IsCreature() && Realowner->IsPlayer())
+    {
+        player = (Player*)Realowner;
+        creature = (Creature*)Realtarget;
+
+        if (Realowner->GetMap()->IsRaidOrHeroicDungeon()) //No PVE scaling in raid
+            return false;
+    }
+    else if (Realowner->IsPlayer() && Realtarget->IsPlayer())
+    {
+        if (Realowner->IsHostileTo(Realtarget))
+            return sWorld->getBoolConfig(CONFIG_BOOL_SCALE_PVP_HOSTILE);
+
+        if (Realowner->IsFriendlyTo(Realtarget))
+            return sWorld->getBoolConfig(CONFIG_BOOL_SCALE_PVP_FRIENDLY);
+
+        return false;
+    }
+    else
+        return false;
+
+    if (!player->IsGameMaster())/*&& creature->GetReactionTo(player) >= REP_NEUTRAL*/
+    {
+        if (!creature->isTargetableForAttack())  //RCS //??
+        {
+            if (!(creature->isDead()))
+                return false;
+        }
+    }
+
+    if (creature->IsGuard())
+        return false;
+
+    if (creature->IsCivilian()) //Might need to be removed !
+        return false;
+
+    if (creature->IsCritter())
+        return false;
+
+    if (ZoneFlex const* thisLocation = sObjectMgr->GetAreaZoneFlex(creature->GetAreaId(), creature->GetZoneId()))
+        return !thisLocation->IsScalingDisabled();
+
+    return true;
+}
+
+bool ObjectMgr::UsesCreatureStorageScaling(Unit* owner, Unit* target) const
+{
+    if (!owner || !target)
+        return false;
+
+    Unit* realOwner = owner->GetCharmerOrOwnerOrSelf();
+    Unit* realTarget = target->GetCharmerOrOwnerOrSelf();
+    return realOwner && realTarget && realOwner->IsPlayer() && realTarget->IsCreature();
+}
+
+ZoneFlex const* ObjectMgr::GetAreaZoneFlex(uint32 areaId, uint32 zoneId) const
+{
+    if (ZoneFlex const* areaFlex = GetZoneFlex(areaId))
+        return areaFlex;
+
+    if (ZoneFlex const* zoneFlex = GetZoneFlex(zoneId))
+        return zoneFlex;
+
+    return nullptr;
+}
+
+void ObjectMgr::SetZoneFlexForTest(ZoneFlex const& zoneFlex)
+{
+    mZoneFlexMap[zoneFlex.areaId] = zoneFlex;
+}
+
+void ObjectMgr::RemoveZoneFlexForTest(uint32 areaId)
+{
+    mZoneFlexMap.erase(areaId);
+}
+
+// Load zone ranges and per-creature level offsets used by custom scaling.
+
+void ObjectMgr::LoadZoneScale()
+{
+    uint32 oldMSTime = getMSTime();
+
+    mZoneFlexMap.clear();
+    QueryResult result = WorldDatabase.Query("SELECT * FROM rochenoire_scale_zone");
+
+    if (!result)
+    {
+        LOG_INFO("sql.sql", ">> Loaded 0 Zone scaling details. DB table `rochenoire_scale_zone` is empty.");
+        LOG_INFO("server.loading", " ");
+        return;
+    }
+
+    do
+    {
+        Field* fields = result->Fetch();
+
+        std::string areaName = fields[0].Get<std::string>();
+        uint32      mapId = fields[1].Get<uint32>();
+        uint32      areaId = fields[2].Get<uint32>();
+        uint32      LevelRangeMin = fields[3].Get<uint32>();
+        uint32      LevelRangeMax = fields[4].Get<uint32>();
+        uint32      areaFlags = fields[5].Get<uint32>();
+
+        ZoneFlex& data = mZoneFlexMap[areaId];
+        data.areaName = areaName;
+        data.mapId = mapId;
+        data.areaId = areaId;
+        data.LevelRangeMin = LevelRangeMin;
+        data.LevelRangeMax = LevelRangeMax;
+        data.areaFlags = areaFlags;
+
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> Loaded {} Zone scaling details in {} ms", (unsigned long)mZoneFlexMap.size(), GetMSTimeDiffToNow(oldMSTime));
+    LOG_INFO("server.loading", " ");
+}
+
+void ObjectMgr::LoadLevelScaleCreature()
+{
+    uint32 oldMSTime = getMSTime();
+
+    mCreatureForcedLevelVarMap.clear();
+    QueryResult result = WorldDatabase.Query("SELECT * FROM rochenoire_scale_level_creature");
+
+    if (!result)
+    {
+        LOG_ERROR("sql.sql", ">> Loaded 0 creature level scaling details. DB table `rochenoire_scale_level_creature` is empty.");
+        LOG_INFO("server.loading", " ");
+        return;
+    }
+
+    Field* fields;
+    do
+    {
+        fields = result->Fetch();
+
+        uint32      guid = fields[0].Get<uint32>();
+        int8        flevelvar = fields[1].Get<int8>();
+
+        mCreatureForcedLevelVarMap[guid] = flevelvar;
+
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> Loaded {} creature level scaling details in {} ms", (unsigned long)mCreatureForcedLevelVarMap.size(), GetMSTimeDiffToNow(oldMSTime));
+    LOG_INFO("server.loading", " ");
+}
+
+void ObjectMgr::LoadLevelScaleCreatureTemplate()
+{
+    uint32 oldMSTime = getMSTime();
+
+    mCreatureForcedLevelVarMapTemplate.clear();
+    QueryResult result = WorldDatabase.Query("SELECT * FROM rochenoire_scale_level_creature_template");
+
+    if (!result)
+    {
+        LOG_ERROR("sql.sql", ">> Loaded 0 creature level scaling details. DB table `rochenoire_scale_level_creature_template` is empty.");
+        LOG_INFO("server.loading", " ");
+        return;
+    }
+
+    Field* fields;
+    do
+    {
+        fields = result->Fetch();
+
+        uint32      entry = fields[0].Get<uint32>();
+        int8        flevelvar = fields[1].Get<int8>();
+
+        mCreatureForcedLevelVarMapTemplate[entry] = flevelvar;
+
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> Loaded {} creature level template scaling details in {} ms", (unsigned long)mCreatureForcedLevelVarMapTemplate.size(), GetMSTimeDiffToNow(oldMSTime));
+    LOG_INFO("server.loading", " ");
+}
+
+int8 const* ObjectMgr::GetLevelScaleCreatureTemplate(uint32 entry) const
+{
+    CreatureForceLevelVar::const_iterator itr = mCreatureForcedLevelVarMapTemplate.find(entry);
+    return itr != mCreatureForcedLevelVarMapTemplate.end() ? &itr->second : nullptr;
+}
+
+int8 const* ObjectMgr::GetLevelScaleCreature(uint32 guid) const
+{
+    CreatureForceLevelVar::const_iterator itr = mCreatureForcedLevelVarMap.find(guid);
+    return itr != mCreatureForcedLevelVarMap.end() ? &itr->second : nullptr;
+}
+
+// Scale creature armor to the effective level of the player in PvE combat.
+uint32 ObjectMgr::ScaleArmor(Unit* owner, Unit* target, uint32 oldarmor) const
+{
+    if (oldarmor == 0)
+        return oldarmor;
+
+    Unit* realOwner = owner->GetCharmerOrOwnerOrSelf();
+    Unit* realTarget = target->GetCharmerOrOwnerOrSelf();
+
+    if (!realOwner || !target)
+        return oldarmor;
+
+    if (!IsScalable(realOwner, realTarget))
+        return oldarmor;
+
+    Creature* creature;
+    Player* player;
+
+    int pAggro = AGGRO_NONE;
+
+    if (realOwner->IsCreature() && realTarget->IsPlayer())
+    {
+        creature = realOwner->ToCreature();
+        player = realTarget->ToPlayer();
+
+        // Creature is the attacker
+        pAggro = AGGRO_EVP;
+    }
+    else if (realTarget->IsCreature() && realOwner->IsPlayer())
+    {
+        player = realOwner->ToPlayer();
+        creature = realTarget->ToCreature();
+
+        // Player is the attacker
+        pAggro = AGGRO_PVE;
+    }
+    else
+        return oldarmor;
+
+    uint32 armor = oldarmor;
+
+    int32 scaled_level = creature->getLevelForTarget(player);
+    int32 origin_level = creature->GetLevel();
+
+    if (pAggro == AGGRO_PVE)
+    {
+        // Scale creature armor based on player level
+        uint32 max_armor = (float)creature->GetArmor();
+        if (max_armor <= 1)
+            return armor;
+
+        float ratio_armor = 1.0f;
+
+        if (CreatureTemplate const* cinfo = creature->GetCreatureTemplate())
+        {
+            if (cinfo->unit_class != 0)
+            {
+                if (CreatureBaseStats const* cCLSS = sObjectMgr->GetCreatureBaseStats(origin_level, cinfo->unit_class))
+                    ratio_armor = armor / (cCLSS->BaseArmor * cinfo->ModArmor);
+
+                if (CreatureBaseStats const* cCLSS = sObjectMgr->GetCreatureBaseStats(scaled_level, cinfo->unit_class))
+                    armor = cCLSS->BaseArmor * cinfo->ModArmor * ratio_armor;
+            }
+        }
+    }
+
+    return armor;
+}
+
+// Scale damage, healing, and power effects according to PvE/PvP level context.
+float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& isScaled, float& Ratio, SpellInfo const* spellProto, SpellEffIndex eff_idx, bool isRevert, SpellType ForcedScalingType) const
+{
+    if (isScaled || olddamage == 0)
+        return olddamage;
+
+    if (!IsScalable(owner, target))
+    {
+        Ratio = 1.0f;
+        return olddamage;
+    }
+
+    Creature* creature = nullptr;
+    Player* player = nullptr;
+    Player* targetPlayer = nullptr;
+
+    uint8 scaled_level = 0;
+    uint8 origin_level = 0;
+
+    uint32 pAggro = AGGRO_NONE;
+    Unit* realOwner = owner->GetCharmerOrOwnerOrSelf();
+    Unit* realTarget = target->GetCharmerOrOwnerOrSelf();
+
+    if (realOwner->IsPlayer() && realTarget->IsPlayer())
+    {
+        player = realOwner->ToPlayer();
+        targetPlayer = realTarget->ToPlayer();
+        origin_level = player->GetLevel();
+        scaled_level = targetPlayer->GetLevel();
+        pAggro |= AGGRO_PVP;
+    }
+    else if (realOwner->IsPlayer() && realTarget->IsCreature())
+    {
+        player = realOwner->ToPlayer();
+        creature = realTarget->ToCreature();
+        origin_level = creature->GetLevel();
+        scaled_level = creature->getLevelForTarget(player);
+        pAggro |= AGGRO_PVE;
+    }
+    else if (realOwner->IsCreature() && realTarget->IsPlayer())
+    {
+        creature = realOwner->ToCreature();
+        targetPlayer = realTarget->ToPlayer();
+        player = targetPlayer;
+        origin_level = creature->GetLevel();
+        scaled_level = creature->getLevelForTarget(player);
+        pAggro |= AGGRO_EVP;
+    }
+    else
+        return olddamage;
+
+    float damage = olddamage;
+    bool value_neg = olddamage < 0;
+
+    // Avoid breaking calculation
+    if (value_neg)
+        damage *= -1;
+
+    // get spell scaling type
+    SpellType spellType = ForcedScalingType;
+    if (spellType == SPELLTYPE_UNK && spellProto)
+        spellType = GetSpellDamageType(spellProto, eff_idx);
+
+    if (spellType == SPELLTYPE_CHARSTAT)
+    {
+        float caster_funct = (0.0072 * origin_level * origin_level + 1.2594 * (origin_level)+21.718);  //RCS //?? //Might not work above lvl 70  //Maybe use basehealth or a base stat per level ?
+        float caster_ratio = damage / caster_funct;
+
+        float target_value = (0.0072 * scaled_level * scaled_level + 1.2594 * (scaled_level)+21.718);  //RCS //?? //Might not work above lvl 70 //Maybe use basehealth or a base stat per level ?
+        damage = target_value * caster_ratio;
+    }
+    else if (pAggro & AGGRO_PVE)
+    {
+        SpellType baseStatType = spellType == SPELLTYPE_POWER ? SPELLTYPE_POWER : SPELLTYPE_DAMAGE;
+        float scale = GetCreatureBaseStatRatio(creature, scaled_level, baseStatType);
+        if (scale > 0.0f)
+        {
+            float ratio = 1.0f / scale;
+            damage = isRevert ? damage / ratio : damage * ratio;
+            Ratio = isRevert ? scale : ratio;
+        }
+    }
+    else if (spellType == SPELLTYPE_HEAL)
+    {
+        float caster_funct = (0.0792541 * origin_level * origin_level + 1.93556 * (origin_level)+4.56252);
+        float target_value = (0.0792541 * scaled_level * scaled_level + 1.93556 * (scaled_level)+4.56252);
+        float ratio = target_value / caster_funct;
+        damage = isRevert ? damage / ratio : damage * ratio;
+        Ratio = isRevert ? 1.0f / ratio : ratio;
+    }
+    else if (pAggro & AGGRO_PVP || pAggro & AGGRO_EVP)
+    {
+        PlayerClassLevelInfo target_classInfo;
+        PlayerClassLevelInfo owner_classInfo;
+
+        if (targetPlayer)
+        {
+            uint32 TargetClass = targetPlayer->getClass();
+
+            sObjectMgr->GetPlayerClassLevelInfo(TargetClass, scaled_level, &target_classInfo);
+            sObjectMgr->GetPlayerClassLevelInfo(TargetClass, origin_level, &owner_classInfo);
+
+            float targetBaseValue = spellType == SPELLTYPE_POWER ? target_classInfo.basemana : target_classInfo.basehealth;
+            float ownerBaseValue = spellType == SPELLTYPE_POWER ? owner_classInfo.basemana : owner_classInfo.basehealth;
+
+            float ratio = targetBaseValue / ownerBaseValue;
+
+            // update damage output
+            damage = isRevert ? damage / ratio : damage * ratio;
+
+            // return the updated ratio
+            Ratio = isRevert ? 1 / ratio : ratio;
+        }
+    }
+
+    if (value_neg)
+        damage *= -1;
+
+    isScaled = (damage != olddamage);
+    return round(damage);
+}
+
+// Expected equipment counts and item levels used to normalize progression.
+const uint8 expectedItemCounts[] = {
+    4, 4, 5, 5, 6, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10,
+    11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 14,
+    14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16
+};
+
+uint8 ObjectMgr::GetPlayerExpectedItemCount(uint8 level) const {
+    // Check for valid level range
+    if (level >= 1 && level <= 80)
+        return expectedItemCounts[level - 1];  // Array is 0-indexed, so adjust by subtracting 1
+
+    return 4;
+}
+
+const uint8 expectedItemLevels[] = {
+    5, 5, 5, 5, 5, 5, 6, 6, 7, 7, 8, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+    19, 19, 20, 21, 22, 23, 23, 23, 25, 26, 27, 27, 28, 29, 30, 31, 33, 33,
+    34, 35, 35, 36, 37, 37, 38, 39, 40, 40, 41, 42, 42, 43, 43, 43, 44, 45,
+    46, 50, 62, 67, 71, 74, 76, 79, 81, 83, 85, 112, 135, 140, 145, 150, 155,
+    160, 165, 170, 175, 180
+};
+
+uint8 ObjectMgr::GetPlayerExpectedItemLevel(uint8 level) const {
+    // Check for valid level range
+    if (level >= 1 && level <= 80)
+        return expectedItemLevels[level - 1];  // Array is 0-indexed, so adjust by subtracting 1
+
+    return 5;
+}
+
+uint8 ObjectMgr::GetClosestLevelForItemLevel(uint8 itemLevel) const {
+    uint8 closestLevel = 1;
+    uint8 closestDifference = std::numeric_limits<uint8>::max();
+
+    // Iterate over the array to find the closest item level
+    for (uint8 level = 1; level <= 80; ++level)
+    {
+        uint8 levelItemLevel = expectedItemLevels[level - 1];
+        uint8 difference = std::abs(levelItemLevel - itemLevel);
+
+        if (difference < closestDifference)
+        {
+            closestDifference = difference;
+            closestLevel = level;
+        }
+    }
+
+    return closestLevel;
+}
+
+SpellType ObjectMgr::GetSpellDamageType(SpellInfo const* spellProto, SpellEffIndex eff_idx) const
+{
+    SpellType type = SPELLTYPE_UNK;
+
+    if (uint32 aura = spellProto->Effects[eff_idx].ApplyAuraName)   //EffectApplyAuraName[eff_idx])
+    {
+        switch (aura)
+        {
+        case SPELL_AURA_MOD_STAT:
+            type = SPELLTYPE_CHARSTAT;
+            break;
+        case SPELL_AURA_POWER_BURN:
+        case SPELL_AURA_MANA_SHIELD:
+            //case SPELL_AURA_PERIODIC_MANA_FUNNEL:   //RCS //?? //Seems deprecated within 3.3.5 client
+        case SPELL_AURA_PERIODIC_MANA_LEECH:
+            type = SPELLTYPE_POWER;
+            break;
+        case SPELL_AURA_PERIODIC_DAMAGE:
+        case SPELL_AURA_PERIODIC_LEECH:
+        case SPELL_AURA_PERIODIC_TRIGGER_SPELL_WITH_VALUE:
+            type = SPELLTYPE_DAMAGE;
+            break;
+        case SPELL_AURA_PERIODIC_HEAL:
+            type = SPELLTYPE_HEAL;
+            break;
+        }
+    }
+    else if (uint32 effect = spellProto->Effects[eff_idx].Effect)
+    {
+        switch (effect)
+        {
+        case SPELL_EFFECT_HEALTH_LEECH:
+        case SPELL_EFFECT_HEAL:
+            type = SPELLTYPE_HEAL;
+            break;
+        case SPELL_EFFECT_POWER_DRAIN:
+        case SPELL_EFFECT_POWER_BURN:
+            type = SPELLTYPE_POWER;
+            break;
+        case SPELL_EFFECT_SCHOOL_DAMAGE:
+        case SPELL_EFFECT_ENVIRONMENTAL_DAMAGE:
+        case SPELL_EFFECT_SUMMON:
+        case SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL:
+        case SPELL_EFFECT_WEAPON_DAMAGE:
+        case SPELL_EFFECT_NORMALIZED_WEAPON_DMG:
+        case SPELL_EFFECT_TRIGGER_SPELL_WITH_VALUE:
+            type = SPELLTYPE_DAMAGE;
+            break;
+        }
+    }
+
+    return type;
+}
+
+bool ObjectMgr::IsNotScaledLootFromVendor(uint32 ItemId) const
+{
+    ItemsNotScaledFromVendors::const_iterator itr = mItemsNotScaledFromVendors.find(ItemId);
+    if (itr == mItemsNotScaledFromVendors.end())
+        return false;
+
+    return true;
+}
+
+uint32 const ObjectMgr::GetItemLootScale(uint32 entry, uint8 pLevel) const
+{
+    LootConsumableScaleMap::const_iterator itr = mLootConsumableScaleMap.find(entry);
+    if (itr == mLootConsumableScaleMap.end())
+    {
+        // couldn't find a replacement, return current item
+        return entry;
+    }
+    else
+    {
+        // look for an item below player level
+        for (uint32 level = pLevel; level > 0; level--)
+        {
+            RemplacementIdsMap::const_iterator iitr = itr->second.find(level);
+            if (iitr == itr->second.end())
+                continue;
+            else
+                return iitr->second;
+        }
+
+        return entry;
+    }
+}
+
+void ObjectMgr::LoadItemsNotScaledFromVendors()
+{
+    uint32 oldMSTime = getMSTime();
+
+    mItemsNotScaledFromVendors.clear();
+    QueryResult result = WorldDatabase.Query("SELECT * FROM rochenoire_items_not_scaled_from_vendors");
+
+    if (!result)
+    {
+        LOG_ERROR("sql.sql", ">> Loaded 0 Not scaled items from vendors. DB table `rochenoire_items_not_scaled_from_vendors` is empty.");
+        LOG_INFO("server.loading", " ");
+        return;
+    }
+
+    do
+    {
+        Field* fields = result->Fetch();
+
+        uint32 ItemId = fields[0].Get<uint32>();
+
+        mItemsNotScaledFromVendors.insert(ItemId);
+
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> >> Loaded {} Not scaled items from vendors in {} ms", (unsigned long)mItemsNotScaledFromVendors.size(), GetMSTimeDiffToNow(oldMSTime));
+    LOG_INFO("server.loading", " ");
+}
+
+void ObjectMgr::LoadLootConsumableScale()
+{
+    uint32 oldMSTime = getMSTime();
+
+    mLootConsumableScaleMap.clear();
+    QueryResult result = WorldDatabase.Query("SELECT * FROM rochenoire_scale_consumable_loot");
+
+    if (!result)
+    {
+        LOG_ERROR("sql.sql", ">> Loaded 0 Item loot scale. DB table `rochenoire_scale_consumable_loot` is empty.");
+        LOG_INFO("server.loading", " ");
+        return;
+    }
+
+    do
+    {
+        Field* fields = result->Fetch();
+
+        uint32 ItemId = fields[0].Get<uint32>();
+        uint32 RitemId = fields[1].Get<uint32>();
+        uint32 Plevel = fields[2].Get<uint32>();
+
+        RemplacementIdsMap RitemsId;
+        LootConsumableScaleMap::iterator itr = mLootConsumableScaleMap.find(ItemId);
+        if (itr != mLootConsumableScaleMap.end()) { RitemsId = itr->second; }
+
+        uint32& data = RitemsId[Plevel];
+        data = RitemId;
+
+        mLootConsumableScaleMap[ItemId] = RitemsId;
+
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> >> Loaded {} Item Loot Scale in {} ms", (unsigned long)mLootConsumableScaleMap.size(), GetMSTimeDiffToNow(oldMSTime));
+    LOG_INFO("server.loading", " ");
+}
+
+uint32 ObjectMgr::GetItemParentEntry(uint32 ItemId) const
+{
+    if (ItemId < MIN_ENTRY_SCALE)
+    {
+        return ItemId;
+    }
+    else
+    {
+        return std::floor((ItemId - MIN_ENTRY_SCALE - 1) / MAX_REQUIREDLEVEL);
+    }
+}
+// End of Rochenoire custom scaling and smart-loot support.
+
 void ObjectMgr::LoadScriptNames()
 {
     uint32 oldMSTime = getMSTime();
@@ -10677,6 +11508,30 @@ CreatureBaseStats const* ObjectMgr::GetCreatureBaseStats(uint8 level, uint8 unit
     };
     static const DefaultCreatureBaseStats defStats;
     return &defStats;
+}
+
+void ObjectMgr::SetCreatureBaseStatsForTest(uint8 level, uint8 unitClass, CreatureBaseStats const& stats)
+{
+    _creatureBaseStatsStore[MAKE_PAIR16(level, unitClass)] = stats;
+}
+
+void ObjectMgr::RemoveCreatureBaseStatsForTest(uint8 level, uint8 unitClass)
+{
+    _creatureBaseStatsStore.erase(MAKE_PAIR16(level, unitClass));
+}
+
+void ObjectMgr::SetPlayerClassLevelInfoForTest(uint8 unitClass, uint8 level, uint32 baseHealth, uint32 baseMana)
+{
+    ASSERT(unitClass < MAX_CLASSES && level > 0);
+
+    if (!_playerClassInfo[unitClass])
+        _playerClassInfo[unitClass] = new PlayerClassInfo();
+
+    if (!_playerClassInfo[unitClass]->levelInfo)
+        _playerClassInfo[unitClass]->levelInfo = new PlayerClassLevelInfo[DEFAULT_MAX_LEVEL];
+
+    _playerClassInfo[unitClass]->levelInfo[level - 1].basehealth = baseHealth;
+    _playerClassInfo[unitClass]->levelInfo[level - 1].basemana = baseMana;
 }
 
 void ObjectMgr::LoadCreatureClassLevelStats()

@@ -345,6 +345,10 @@ class spell_item_mind_amplify_dish : public SpellScript
         if (!caster || !target)
             return;
 
+        Player* player = caster->ToPlayer();
+        if (!player)
+            return;
+
         // little protection
         if (target->ToCreature() && target->ToCreature()->GetCreatureTemplate()->rank > CREATURE_ELITE_NORMAL)
                 return;
@@ -358,7 +362,7 @@ class spell_item_mind_amplify_dish : public SpellScript
         int32 failure = 30;
 
         // Increased chance of failure when used against targets over level 60.
-        bool isIncreasedChanceOfFailure = GetSpellInfo()->Id == SPELL_MIND_CONTROL_CAP && target->GetLevel() > 60;
+        bool isIncreasedChanceOfFailure = GetSpellInfo()->Id == SPELL_MIND_CONTROL_CAP && target->getLevelForTarget(player) > 60;
         if (isIncreasedChanceOfFailure)
         {
             backfire = 20; // not verified
@@ -539,14 +543,18 @@ class spell_item_magic_dust : public SpellScript
 
     void HandlePreventAura(SpellEffIndex /*effIndex*/)
     {
-        if (Unit* target = GetHitUnit())
+        Unit* caster = GetCaster();
+        if (Player* player = caster->ToPlayer())
         {
-            if (target->GetLevel() >= 30)
+            if (Unit* target = GetHitUnit())
             {
-                uint8 chance = 100 - std::min<uint8>(100, target->GetLevel() - 30 * urand(3, 10));
-                if (!roll_chance_i(chance))
+                if (target->GetLevel() >= 30)
                 {
-                    PreventHitAura();
+                    uint8 chance = 100 - std::min<uint8>(100, target->getLevelForTarget(player) - 30 * urand(3, 10));
+                    if (!roll_chance_i(chance))
+                    {
+                        PreventHitAura();
+                    }
                 }
             }
         }
@@ -4038,8 +4046,10 @@ class spell_item_green_whelp_armor : public AuraScript
 
     bool CheckProc(ProcEventInfo& eventInfo)
     {
-        if (eventInfo.GetActor() && eventInfo.GetActor()->GetLevel() <= 50)
-            return true;
+        Unit* caster = GetCaster();
+        if (Player* player = caster->ToPlayer())
+            if (eventInfo.GetActor() && eventInfo.GetActor()->getLevelForTarget(player) <= 50)
+                return true;
 
         return false;
     }

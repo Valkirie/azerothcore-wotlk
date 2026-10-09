@@ -31,6 +31,7 @@
 #include "CreatureGroups.h"
 #include "MotionMaster.h"
 #include "ObjectAccessor.h"
+#include "ObjectMgr.h"
 #include "Player.h"
 #include "SpellAuraEffects.h"
 #include "SpellInfo.h"
@@ -58,6 +59,29 @@ void ThreatReference::AddThreat(float amount)
     else
         HeapNotifyDecreased();
     _mgr._needClientUpdate = true;
+}
+
+ThreatManager::Snapshot ThreatManager::CreateSnapshot() const
+{
+    Snapshot snapshot;
+    for (ThreatReference const* reference : GetUnsortedThreatList())
+        snapshot.ThreatenedByOwner.emplace_back(reference->GetVictim()->GetGUID(), reference->GetThreat());
+
+    for (auto const& [guid, reference] : GetThreatenedByMeList())
+        snapshot.ThreateningOwner.emplace_back(guid, reference->GetThreat());
+
+    return snapshot;
+}
+
+void ThreatManager::RestoreSnapshot(Snapshot const& snapshot)
+{
+    for (auto const& [guid, threat] : snapshot.ThreatenedByOwner)
+        if (Unit* victim = ObjectAccessor::GetUnit(*_owner, guid))
+            AddThreat(victim, threat, nullptr, true, true);
+
+    for (auto const& [guid, threat] : snapshot.ThreateningOwner)
+        if (Unit* aggressor = ObjectAccessor::GetUnit(*_owner, guid))
+            aggressor->GetThreatMgr().AddThreat(_owner, threat, nullptr, true, true);
 }
 
 void ThreatReference::ScaleThreat(float factor)
@@ -362,6 +386,16 @@ bool ThreatManager::IsThreateningAnyone(bool includeOffline) const
     return false;
 }
 
+Unit* ThreatManager::GetHighestThreateningUnit() const
+{
+    ThreatReference const* highestThreat = nullptr;
+    for (auto const& pair : _threatenedByMe)
+        if (pair.second->IsAvailable() && (!highestThreat || pair.second->GetThreat() > highestThreat->GetThreat()))
+            highestThreat = pair.second;
+
+    return highestThreat ? highestThreat->GetOwner() : nullptr;
+}
+
 bool ThreatManager::IsThreateningTo(ObjectGuid const& who, bool includeOffline) const
 {
     auto it = _threatenedByMe.find(who);
@@ -389,7 +423,7 @@ void ThreatManager::EvaluateSuppressed(bool canExpire)
     }
 }
 
-void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell, bool ignoreModifiers, bool ignoreRedirects)
+void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell, bool ignoreModifiers, bool ignoreRedirects, bool isScaled, SpellSchoolMask schoolMask)
 {
     // step 1: we can shortcut if the spell has one of the NO_THREAT attrs set - nothing will happen
     if (spell)
@@ -403,7 +437,7 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
     // while riding a vehicle, all threat goes to the vehicle, not the pilot
     if (Unit* vehicle = target->GetVehicleBase())
     {
-        AddThreat(vehicle, amount, spell, ignoreModifiers, ignoreRedirects);
+        AddThreat(vehicle, amount, spell, ignoreModifiers, ignoreRedirects, isScaled, schoolMask);
         if (target->HasUnitTypeMask(UNIT_MASK_ACCESSORY)) // accessories are fully treated as components of the parent and cannot have threat
             return;
         amount = 0.0f;
@@ -425,7 +459,10 @@ void ThreatManager::AddThreat(Unit* target, float amount, SpellInfo const* spell
 
     // apply threat modifiers to the amount
     if (!ignoreModifiers)
-        amount = CalculateModifiedThreat(amount, target, spell);
+        amount = CalculateModifiedThreat(amount, target, spell, schoolMask);
+
+    if (amount > 0.0f && !isScaled)
+        amount = sObjectMgr->ScaleDamage(target, _owner, amount);
 
     // if we're increasing threat, send some/all of it to redirection targets instead if applicable
     if (!ignoreRedirects && amount > 0.0f)
@@ -705,7 +742,7 @@ void ThreatManager::ProcessAIUpdates()
     return (a->GetThreat() * aWeight < b->GetThreat());
 }
 
-/*static*/ float ThreatManager::CalculateModifiedThreat(float threat, Unit const* victim, SpellInfo const* spell)
+/*static*/ float ThreatManager::CalculateModifiedThreat(float threat, Unit const* victim, SpellInfo const* spell, SpellSchoolMask schoolMask)
 {
     // modifiers by spell
     if (spell)
@@ -720,7 +757,7 @@ void ThreatManager::ProcessAIUpdates()
 
     // modifiers by effect school
     ThreatManager const& victimMgr = victim->GetThreatMgr();
-    SpellSchoolMask const mask = spell ? spell->GetSchoolMask() : SPELL_SCHOOL_MASK_NORMAL;
+    SpellSchoolMask const mask = (schoolMask == SPELL_SCHOOL_MASK_NORMAL && spell) ? spell->GetSchoolMask() : schoolMask;
     switch (mask)
     {
         case SPELL_SCHOOL_MASK_NORMAL:

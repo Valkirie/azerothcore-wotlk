@@ -16,6 +16,7 @@
  */
 
 #include "AreaDefines.h"
+#include "Bag.h"
 #include "CellImpl.h"
 #include "Chat.h"
 #include "CombatAI.h"
@@ -23,8 +24,13 @@
 #include "CreatureTextMgr.h"
 #include "DBCStores.h"
 #include "GameEventMgr.h"
+#include "GameObject.h"
 #include "GameTime.h"
 #include "GridNotifiers.h"
+#include "Item.h"
+#include "ItemEnchantmentMgr.h"
+#include "LootMgr.h"
+#include "Mail.h"
 #include "ObjectMgr.h"
 #include "PassiveAI.h"
 #include "Pet.h"
@@ -38,6 +44,9 @@
 #include "World.h"
 #include "WorldState.h"
 #include "WorldStateDefines.h"
+#include "StringFormat.h"
+
+#include <unordered_map>
 
 /// @todo: this import is not necessary for compilation and marked as unused by the IDE
 //  however, for some reasons removing it would cause a damn linking issue
@@ -1958,6 +1967,448 @@ public:
     }
 };
 
+enum BlackMarket
+{
+    BLACK_MARKET_TOKEN = 500001,
+    BLACK_MARKET_ITEM_ACTION = 100,
+    BLACK_MARKET_SCALE_ACTION = 1000,
+    BLACK_MARKET_CONFIRM_ACTION = 2000,
+    BLACK_MARKET_CANCEL_ACTION = 2001,
+    BLACK_MARKET_TEXT_ITEMS = 600000,
+    BLACK_MARKET_TEXT_LEVELS = 600001,
+    BLACK_MARKET_TEXT_CONFIRM = 600002,
+    BLACK_MARKET_MAIL_SUBJECT = 11039,
+    BLACK_MARKET_MAIL_BODY = 11040,
+    BLACK_MARKET_CONFIRM_YES = 11100,
+    BLACK_MARKET_CONFIRM_NO = 11101,
+    BLACK_MARKET_CONFIRM_DETAILS = 11102,
+    BLACK_MARKET_MAIL_DELAY = 30,
+    BLACK_MARKET_MAILBOX_POINT = 1
+};
+
+enum BlackMarketTexts
+{
+    BLACK_MARKET_TEXT_INVENTORY_FULL,
+    BLACK_MARKET_TEXT_NOT_ENOUGH_TOKENS,
+    BLACK_MARKET_TEXT_CANCEL,
+    BLACK_MARKET_TEXT_CALL,
+    BLACK_MARKET_TEXT_MAIL,
+    BLACK_MARKET_TEXT_DEAL,
+    BLACK_MARKET_TEXT_ADVERTISE,
+    BLACK_MARKET_TEXT_ADVERTISE_WHISPER
+};
+
+enum BlackMarketPhase
+{
+    BLACK_MARKET_PHASE_IDLE,
+    BLACK_MARKET_PHASE_MOVING_TO_MAILBOX,
+    BLACK_MARKET_PHASE_POSTING,
+    BLACK_MARKET_PHASE_RETURNING
+};
+
+constexpr float BLACK_MARKET_MAILBOX_SEARCH_RANGE = 100.0f;
+
+class npc_black_market : public CreatureScript
+{
+public:
+    npc_black_market() : CreatureScript("npc_black_market") { }
+
+    struct PlayerSelection
+    {
+        std::vector<ObjectGuid> Items;
+        ObjectGuid SelectedItem;
+        std::vector<uint32> ScaledItems;
+        uint32 SelectedScaledItem = 0;
+        bool HasSelectedScaledItem = false;
+    };
+
+    struct npc_black_marketAI : public ScriptedAI
+    {
+        npc_black_marketAI(Creature* creature) : ScriptedAI(creature) { }
+
+        std::unordered_map<ObjectGuid, PlayerSelection> Selections;
+        BlackMarketPhase Phase = BLACK_MARKET_PHASE_IDLE;
+        uint32 PendingPosts = 0;
+        uint32 AmbientTextTimer = 0;
+        uint32 PhaseTimer = 0;
+
+        void Reset() override
+        {
+            Phase = BLACK_MARKET_PHASE_IDLE;
+            PendingPosts = 0;
+            AmbientTextTimer = urand(30, 60) * IN_MILLISECONDS;
+            PhaseTimer = 0;
+            me->SetEmoteState(EMOTE_ONESHOT_NONE);
+            me->SetNpcFlag(UNIT_NPC_FLAG_GOSSIP);
+        }
+
+        bool IsAvailable() const
+        {
+            return Phase == BLACK_MARKET_PHASE_IDLE;
+        }
+
+        void QueuePost()
+        {
+            ++PendingPosts;
+            if (Phase == BLACK_MARKET_PHASE_IDLE && !PhaseTimer)
+                PhaseTimer = 1 * IN_MILLISECONDS;
+        }
+
+        void StartPostingTrip()
+        {
+            GameObject* mailbox = me->FindNearestGameObjectOfType(GAMEOBJECT_TYPE_MAILBOX, BLACK_MARKET_MAILBOX_SEARCH_RANGE);
+            if (!mailbox || !mailbox->isSpawned())
+            {
+                PendingPosts = 0;
+                PhaseTimer = 0;
+                return;
+            }
+
+            float mailboxX;
+            float mailboxY;
+            float mailboxZ;
+            mailbox->GetContactPoint(me, mailboxX, mailboxY, mailboxZ, 1.0f);
+
+            Talk(BLACK_MARKET_TEXT_CALL);
+            Selections.clear();
+            me->RemoveNpcFlag(UNIT_NPC_FLAG_GOSSIP);
+            Phase = BLACK_MARKET_PHASE_MOVING_TO_MAILBOX;
+            PhaseTimer = 60 * IN_MILLISECONDS;
+            me->GetMotionMaster()->MovePoint(BLACK_MARKET_MAILBOX_POINT, mailboxX, mailboxY, mailboxZ);
+        }
+
+        void UseMailbox()
+        {
+            Phase = BLACK_MARKET_PHASE_POSTING;
+            PhaseTimer = 6 * IN_MILLISECONDS;
+            me->SetEmoteState(EMOTE_STATE_USE_STANDING_NO_SHEATHE);
+            Talk(BLACK_MARKET_TEXT_MAIL);
+        }
+
+        void ReturnHome()
+        {
+            me->SetEmoteState(EMOTE_ONESHOT_NONE);
+            Phase = BLACK_MARKET_PHASE_RETURNING;
+            PhaseTimer = 60 * IN_MILLISECONDS;
+            me->GetMotionMaster()->MoveTargetedHome();
+        }
+
+        void FinishPostingTrip()
+        {
+            Phase = BLACK_MARKET_PHASE_IDLE;
+            PendingPosts = 0;
+            PhaseTimer = 0;
+            me->SetEmoteState(EMOTE_ONESHOT_NONE);
+            me->SetNpcFlag(UNIT_NPC_FLAG_GOSSIP);
+        }
+
+        void MovementInform(uint32 type, uint32 id) override
+        {
+            if (type == POINT_MOTION_TYPE && id == BLACK_MARKET_MAILBOX_POINT && Phase == BLACK_MARKET_PHASE_MOVING_TO_MAILBOX)
+                UseMailbox();
+        }
+
+        void JustReachedHome() override
+        {
+            if (Phase == BLACK_MARKET_PHASE_RETURNING)
+                FinishPostingTrip();
+        }
+
+        void UpdateAI(uint32 diff) override
+        {
+            if (Phase == BLACK_MARKET_PHASE_IDLE)
+            {
+                if (AmbientTextTimer <= diff)
+                {
+                    if (urand(0, 1))
+                        Talk(BLACK_MARKET_TEXT_ADVERTISE);
+                    else if (Player* player = me->SelectNearestPlayer(30.0f))
+                        Talk(BLACK_MARKET_TEXT_ADVERTISE_WHISPER, player);
+
+                    AmbientTextTimer = urand(30, 60) * IN_MILLISECONDS;
+                }
+                else
+                    AmbientTextTimer -= diff;
+
+                if (!PendingPosts)
+                    return;
+
+                if (PhaseTimer <= diff)
+                    StartPostingTrip();
+                else
+                    PhaseTimer -= diff;
+
+                return;
+            }
+
+            if (PhaseTimer > diff)
+            {
+                PhaseTimer -= diff;
+                return;
+            }
+
+            if (Phase == BLACK_MARKET_PHASE_MOVING_TO_MAILBOX)
+                UseMailbox();
+            else if (Phase == BLACK_MARKET_PHASE_POSTING)
+                ReturnHome();
+            else if (Phase == BLACK_MARKET_PHASE_RETURNING)
+                FinishPostingTrip();
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return new npc_black_marketAI(creature);
+    }
+
+    static std::string GetItemName(Player* player, ItemTemplate const* itemTemplate)
+    {
+        std::string name = itemTemplate->Name1;
+        if (ItemLocale const* locale = sObjectMgr->GetItemLocale(itemTemplate->ItemId))
+            ObjectMgr::GetLocaleString(locale->Name, player->GetSession()->GetSessionDbLocaleIndex(), name);
+        return name;
+    }
+
+    static bool IsEligibleItem(Player* player, Item* item)
+    {
+        if (!item || item->IsInTrade() || item->GetCount() != 1)
+            return false;
+
+        ItemTemplate const* itemTemplate = item->GetTemplate();
+        return (itemTemplate->Class == ITEM_CLASS_WEAPON || itemTemplate->Class == ITEM_CLASS_ARMOR) &&
+            itemTemplate->RequiredLevel >= 10 && itemTemplate->RequiredLevel < player->GetLevel();
+    }
+
+    static void AddEligibleItem(Player* player, Item* item, PlayerSelection& selection)
+    {
+        if (!IsEligibleItem(player, item))
+            return;
+
+        selection.Items.push_back(item->GetGUID());
+        ItemTemplate const* itemTemplate = item->GetTemplate();
+        std::string label = GetItemName(player, itemTemplate) + " [" + std::to_string(itemTemplate->RequiredLevel) + "]";
+        AddGossipItemFor(player, GOSSIP_ICON_CHAT, label, GOSSIP_SENDER_MAIN, BLACK_MARKET_ITEM_ACTION + selection.Items.size() - 1);
+    }
+
+    bool OnGossipHello(Player* player, Creature* creature) override
+    {
+        ClearGossipMenuFor(player);
+
+        npc_black_marketAI* blackMarketAI = CAST_AI(npc_black_marketAI, creature->AI());
+        if (!blackMarketAI->IsAvailable())
+        {
+            CloseGossipMenuFor(player);
+            return true;
+        }
+
+        PlayerSelection& selection = blackMarketAI->Selections[player->GetGUID()];
+        selection = PlayerSelection();
+
+        for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+            AddEligibleItem(player, player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot), selection);
+
+        for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+        {
+            if (Bag* bag = player->GetBagByPos(bagSlot))
+                for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+                    AddEligibleItem(player, bag->GetItemByPos(slot), selection);
+        }
+
+        SendGossipMenuFor(player, BLACK_MARKET_TEXT_ITEMS, creature);
+        return true;
+    }
+
+    bool OnGossipSelect(Player* player, Creature* creature, uint32 sender, uint32 action) override
+    {
+        if (sender != GOSSIP_SENDER_MAIN)
+            return false;
+
+        ClearGossipMenuFor(player);
+
+        npc_black_marketAI* blackMarketAI = CAST_AI(npc_black_marketAI, creature->AI());
+        auto selectionItr = blackMarketAI->Selections.find(player->GetGUID());
+        if (selectionItr == blackMarketAI->Selections.end())
+        {
+            CloseGossipMenuFor(player);
+            return true;
+        }
+
+        PlayerSelection& selection = selectionItr->second;
+        if (action >= BLACK_MARKET_ITEM_ACTION && action < BLACK_MARKET_SCALE_ACTION)
+        {
+            uint32 itemIndex = action - BLACK_MARKET_ITEM_ACTION;
+            if (itemIndex >= selection.Items.size())
+            {
+                CloseGossipMenuFor(player);
+                return true;
+            }
+
+            Item* item = player->GetItemByGuid(selection.Items[itemIndex]);
+            if (!IsEligibleItem(player, item))
+            {
+                CloseGossipMenuFor(player);
+                return true;
+            }
+
+            selection.SelectedItem = item->GetGUID();
+            selection.ScaledItems.clear();
+            selection.HasSelectedScaledItem = false;
+
+            ItemTemplate const* itemTemplate = item->GetTemplate();
+            uint32 parentItemId = sObjectMgr->GetItemParentEntry(item->GetEntry());
+            uint32 minimumLevel = std::max<uint32>(itemTemplate->RequiredLevel + 1, player->GetLevel() > 10 ? player->GetLevel() - 9 : 1);
+            for (uint32 level = minimumLevel; level <= player->GetLevel(); ++level)
+            {
+                uint32 scaledItemId = LootStore::LoadScaledLoot(parentItemId, player, level);
+                ItemTemplate const* scaledTemplate = sObjectMgr->GetItemTemplate(scaledItemId);
+                if (!scaledTemplate || scaledItemId == item->GetEntry())
+                    continue;
+
+                selection.ScaledItems.push_back(scaledItemId);
+                uint32 cost = GetTokenCost(itemTemplate, scaledTemplate);
+                ItemTemplate const* currencyTemplate = sObjectMgr->GetItemTemplate(BLACK_MARKET_TOKEN);
+                std::string currencyName = currencyTemplate ? GetItemName(player, currencyTemplate) : "Contraband Mark";
+                std::string label = GetItemName(player, scaledTemplate) + " [" + std::to_string(level) + "] - " + std::to_string(cost) + " " + currencyName;
+                AddGossipItemFor(player, GOSSIP_ICON_CHAT, label, GOSSIP_SENDER_MAIN, BLACK_MARKET_SCALE_ACTION + selection.ScaledItems.size() - 1);
+            }
+
+            SendGossipMenuFor(player, BLACK_MARKET_TEXT_LEVELS, creature);
+            return true;
+        }
+
+        if (action >= BLACK_MARKET_SCALE_ACTION && action < BLACK_MARKET_CONFIRM_ACTION)
+        {
+            uint32 scaledItemIndex = action - BLACK_MARKET_SCALE_ACTION;
+            Item* sourceItem = player->GetItemByGuid(selection.SelectedItem);
+            if (scaledItemIndex >= selection.ScaledItems.size() || !IsEligibleItem(player, sourceItem))
+            {
+                blackMarketAI->Selections.erase(selectionItr);
+                CloseGossipMenuFor(player);
+                return true;
+            }
+
+            ItemTemplate const* scaledTemplate = sObjectMgr->GetItemTemplate(selection.ScaledItems[scaledItemIndex]);
+            if (!scaledTemplate)
+            {
+                blackMarketAI->Selections.erase(selectionItr);
+                CloseGossipMenuFor(player);
+                return true;
+            }
+
+            selection.SelectedScaledItem = scaledItemIndex;
+            selection.HasSelectedScaledItem = true;
+
+            uint32 cost = GetTokenCost(sourceItem->GetTemplate(), scaledTemplate);
+            std::string details = Acore::StringFormat(player->GetSession()->GetAcoreString(BLACK_MARKET_CONFIRM_DETAILS), GetItemName(player, scaledTemplate));
+            std::string confirm = Acore::StringFormat(player->GetSession()->GetAcoreString(BLACK_MARKET_CONFIRM_YES), cost);
+            AddGossipItemFor(player, GOSSIP_ICON_CHAT, details + "\n" + confirm, GOSSIP_SENDER_MAIN, BLACK_MARKET_CONFIRM_ACTION);
+            AddGossipItemFor(player, GOSSIP_ICON_CHAT, player->GetSession()->GetAcoreString(BLACK_MARKET_CONFIRM_NO), GOSSIP_SENDER_MAIN, BLACK_MARKET_CANCEL_ACTION);
+            SendGossipMenuFor(player, BLACK_MARKET_TEXT_CONFIRM, creature);
+            return true;
+        }
+
+        if (action == BLACK_MARKET_CONFIRM_ACTION && selection.HasSelectedScaledItem)
+        {
+            if (CompleteRescale(player, creature, selection, selection.SelectedScaledItem))
+            {
+                creature->AI()->Talk(BLACK_MARKET_TEXT_DEAL, player);
+                blackMarketAI->QueuePost();
+            }
+
+            blackMarketAI->Selections.erase(selectionItr);
+            CloseGossipMenuFor(player);
+            return true;
+        }
+
+        if (action == BLACK_MARKET_CANCEL_ACTION)
+        {
+            creature->AI()->Talk(BLACK_MARKET_TEXT_CANCEL, player);
+            blackMarketAI->Selections.erase(selectionItr);
+            CloseGossipMenuFor(player);
+            return true;
+        }
+
+        blackMarketAI->Selections.erase(selectionItr);
+        CloseGossipMenuFor(player);
+        return true;
+    }
+
+private:
+    static uint32 GetTokenCost(ItemTemplate const* sourceTemplate, ItemTemplate const* scaledTemplate)
+    {
+        uint32 qualityCost = 1 + scaledTemplate->Quality * (scaledTemplate->Quality + 1) / 2;
+        uint32 levelsGained = scaledTemplate->RequiredLevel - sourceTemplate->RequiredLevel;
+        return qualityCost + (levelsGained + 1) / 2;
+    }
+
+    static bool CompleteRescale(Player* player, Creature* creature, PlayerSelection const& selection, uint32 scaledItemIndex)
+    {
+        Item* sourceItem = player->GetItemByGuid(selection.SelectedItem);
+        if (!IsEligibleItem(player, sourceItem))
+            return false;
+
+        uint32 scaledItemId = selection.ScaledItems[scaledItemIndex];
+        ItemTemplate const* scaledTemplate = sObjectMgr->GetItemTemplate(scaledItemId);
+        if (!scaledTemplate || LootStore::LoadScaledLoot(sObjectMgr->GetItemParentEntry(sourceItem->GetEntry()), player, scaledTemplate->RequiredLevel) != scaledItemId)
+            return false;
+
+        uint32 cost = GetTokenCost(sourceItem->GetTemplate(), scaledTemplate);
+        if (!player->HasItemCount(BLACK_MARKET_TOKEN, cost))
+        {
+            creature->AI()->Talk(BLACK_MARKET_TEXT_NOT_ENOUGH_TOKENS, player);
+            return false;
+        }
+
+        Item* scaledItem = Item::CreateItem(scaledItemId, 1, player);
+        if (!scaledItem)
+            return false;
+
+        int32 randomPropertyId = sourceItem->GetItemRandomPropertyId();
+        if (randomPropertyId)
+        {
+            uint32 propertyFamily = 0;
+            uint32 suffixFamily = 0;
+            GetItemEnchantFamilies(std::abs(randomPropertyId), propertyFamily, suffixFamily);
+            int32 scaledRandomPropertyId = Item::GenerateItemRandomPropertyIdForFamily(scaledItemId, propertyFamily, suffixFamily);
+            if (!scaledRandomPropertyId)
+            {
+                delete scaledItem;
+                return false;
+            }
+
+            scaledItem->SetItemRandomProperties(scaledRandomPropertyId);
+        }
+        for (uint8 slot = 0; slot < MAX_INSPECTED_ENCHANTMENT_SLOT; ++slot)
+        {
+            EnchantmentSlot enchantmentSlot = EnchantmentSlot(slot);
+            if (uint32 enchantment = sourceItem->GetEnchantmentId(enchantmentSlot))
+                scaledItem->SetEnchantment(enchantmentSlot, enchantment, sourceItem->GetEnchantmentDuration(enchantmentSlot), sourceItem->GetEnchantmentCharges(enchantmentSlot), player->GetGUID());
+        }
+
+        scaledItem->SetBinding(sourceItem->IsSoulBound());
+        scaledItem->SetUInt32Value(ITEM_FIELD_DURABILITY, std::min(sourceItem->GetUInt32Value(ITEM_FIELD_DURABILITY), scaledTemplate->MaxDurability));
+
+        uint8 sourceBag = sourceItem->GetBagSlot();
+        uint8 sourceSlot = sourceItem->GetSlot();
+
+        std::string itemName = GetItemName(player, scaledTemplate);
+        std::string subject = player->GetSession()->GetAcoreString(BLACK_MARKET_MAIL_SUBJECT);
+        std::string body = Acore::StringFormat(player->GetSession()->GetAcoreString(BLACK_MARKET_MAIL_BODY), itemName, player->GetName());
+
+        CharacterDatabaseTransaction transaction = CharacterDatabase.BeginTransaction();
+        scaledItem->SaveToDB(transaction);
+        MailDraft(subject, body)
+            .AddItem(scaledItem)
+            .SendMailTo(transaction, MailReceiver(player), MailSender(MAIL_CREATURE, creature->GetEntry()), MAIL_CHECK_MASK_HAS_BODY, BLACK_MARKET_MAIL_DELAY);
+
+        CharacterDatabase.CommitTransaction(transaction);
+
+        player->DestroyItemCount(BLACK_MARKET_TOKEN, cost, true);
+        player->DestroyItem(sourceBag, sourceSlot, true);
+        return true;
+    }
+};
+
 /*######
 ## npc_experience
 ######*/
@@ -2720,6 +3171,7 @@ void AddSC_npcs_special()
     new npc_wormhole();
     new npc_pet_trainer();
     new npc_locksmith();
+    new npc_black_market();
     new npc_experience();
     new npc_firework();
     new npc_spring_rabbit();

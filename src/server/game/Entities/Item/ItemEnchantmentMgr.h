@@ -22,5 +22,11 @@
 
 void LoadRandomEnchantmentsTable();
 uint32 GetItemEnchantMod(int32 entry);
+uint32 GetItemEnchantMod(int32 entry, uint32& propertyFamily, uint32& suffixFamily);
+uint32 GetItemEnchantModForFamily(int32 entry, uint32 family, bool suffix);
+void GetItemEnchantFamilies(uint32 enchantmentId, uint32& propertyFamily, uint32& suffixFamily);
+void AddRandomEnchantmentForTest(int32 entry, uint32 enchantmentId, uint32 propertyFamily, uint32 suffixFamily);
+void RemoveRandomEnchantmentForTest(int32 entry, uint32 enchantmentId);
 uint32 GenerateEnchSuffixFactor(uint32 item_id);
+void LoadRochenoireRandomEnchantmentsTable();
 #endif

@@ -2427,7 +2427,7 @@ void Spell::AddUnitTarget(Unit* target, uint32 effectMask, bool checkIfValid /*=
             if (m_auraScaleMask && ihit->effectMask == m_auraScaleMask && m_caster != target)
             {
                 SpellInfo const* auraSpell = m_spellInfo->GetFirstRankSpell();
-                if (uint32(target->GetLevel() + 10) >= auraSpell->SpellLevel)
+                if (uint32(target->GetLevel() + 10) >= auraSpell->SpellLevel) // Aura rank eligibility is based on the target's native level.
                     ihit->scaleAura = true;
             }
 
@@ -2451,7 +2451,7 @@ void Spell::AddUnitTarget(Unit* target, uint32 effectMask, bool checkIfValid /*=
     if (m_auraScaleMask && targetInfo.effectMask == m_auraScaleMask && m_caster != target)
     {
         SpellInfo const* auraSpell = m_spellInfo->GetFirstRankSpell();
-        if (uint32(target->GetLevel() + 10) >= auraSpell->SpellLevel)
+        if (uint32(target->GetLevel() + 10) >= auraSpell->SpellLevel) // Aura rank eligibility is based on the target's native level.
             targetInfo.scaleAura = true;
     }
 
@@ -2945,15 +2945,15 @@ void Spell::DoAllEffectOnTarget(TargetInfo* target)
                     }
                 }
 
-                // Send log damage message to client
+                procVictim |= PROC_FLAG_TAKEN_DAMAGE;
+
+                caster->DealSpellDamage(&damageInfo, true, this);
+
+                // Send the authoritative target-relative result after damage scaling.
                 caster->SendSpellNonMeleeDamageLog(&damageInfo);
                 // Xinef: send info to target about reflect
                 if (reflectedSpell)
                     effectUnit->SendSpellNonMeleeReflectLog(&damageInfo, effectUnit);
-
-                procVictim |= PROC_FLAG_TAKEN_DAMAGE;
-
-                caster->DealSpellDamage(&damageInfo, true, this);
 
                 // do procs after damage, eg healing effects
                 // no need to check if target is alive, done in procdamageandspell
@@ -3005,7 +3005,9 @@ void Spell::DoAllEffectOnTarget(TargetInfo* target)
     else if (m_healing > 0 && unitTarget && unitTarget->IsAlive())
     {
         // pure gameobject cast without an owner: heal anyway, mirroring the damage case below
-        m_healing = Unit::DealHeal(nullptr, unitTarget, uint32(m_healing));
+        HealInfo healInfo(nullptr, unitTarget, uint32(m_healing), m_spellInfo, m_spellInfo->GetSchoolMask());
+        Unit::CalcHealAbsorb(healInfo);
+        m_healing = Unit::DealHeal(nullptr, unitTarget, healInfo.GetHeal());
     }
     else if (m_damage > 0 && unitTarget && unitTarget->IsAlive())
     {
@@ -3226,7 +3228,7 @@ SpellMissInfo Spell::DoSpellHitOnUnit(Unit* unit, uint32 effectMask, bool scaleA
         int32 basePoints[3];
         if (scaleAura)
         {
-            aurSpellInfo = m_spellInfo->GetAuraRankForLevel(unitTarget->GetLevel());
+            aurSpellInfo = m_spellInfo->GetAuraRankForLevel(unitTarget->GetLevel()); // Select the rank from the target's actual progression level.
             ASSERT(aurSpellInfo);
             for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
             {
@@ -6340,7 +6342,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
                     if (!learn_spellproto)
                         return SPELL_FAILED_NOT_KNOWN;
 
-                    if (m_spellInfo->SpellLevel > pet->GetLevel())
+                    if (m_spellInfo->SpellLevel > pet->GetLevel()) // Pet learning checks the pet's persisted level, not a target-relative level.
                         return SPELL_FAILED_LOWLEVEL;
 
                     break;
@@ -6362,7 +6364,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
                         if (!learn_spellproto)
                             return SPELL_FAILED_NOT_KNOWN;
 
-                        if (m_spellInfo->SpellLevel > pet->GetLevel())
+                        if (m_spellInfo->SpellLevel > pet->GetLevel()) // Pet learning checks the pet's persisted level, not a target-relative level.
                             return SPELL_FAILED_LOWLEVEL;
                     }
                     break;
@@ -6536,7 +6538,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
                     uint32 skill = creature->GetCreatureTemplate()->GetRequiredLootSkill();
 
                     int32 skillValue = unitCaster->ToPlayer()->GetSkillValue(skill);
-                    int32 TargetLevel = m_targets.GetUnitTarget()->GetLevel();
+                    int32 TargetLevel = m_targets.GetUnitTarget()->getLevelForTarget(m_caster);
                     int32 ReqValue = (skillValue < 100 ? (TargetLevel - 10) * 10 : TargetLevel * 5);
                     if (ReqValue > skillValue)
                         return SPELL_FAILED_LOW_CASTLEVEL;
@@ -6926,7 +6928,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
                             return SPELL_FAILED_CANT_BE_CHARMED;
 
                         int32 damage = CalculateSpellDamage(i, target);
-                        if (damage && int32(target->GetLevel()) > damage)
+                        if (damage && int32(target->getLevelForTarget(m_caster)) > damage)
                             return SPELL_FAILED_HIGHLEVEL;
                     }
 
@@ -8278,7 +8280,7 @@ bool Spell::CheckEffectTarget(Unit const* target, uint32 eff) const
             if (target->GetCharmerGUID())
                 return false;
             if (int32 damage = CalculateSpellDamage(eff, target))
-                if ((int32)target->GetLevel() > damage)
+                if ((int32)target->getLevelForTarget(m_caster) > damage)
                     return false;
             break;
         default:
@@ -8350,7 +8352,7 @@ bool Spell::CheckEffectTarget(Unit const* target, uint32 eff) const
                 return false;
             if (unitCaster->ToPlayer()->GetSession()->GetRecruiterId() != target->ToPlayer()->GetSession()->GetAccountId() && target->ToPlayer()->GetSession()->IsARecruiter())
                 return false;
-            if (target->ToPlayer()->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_RECRUIT_A_FRIEND_BONUS_PLAYER_LEVEL))
+            if (target->ToPlayer()->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_RECRUIT_A_FRIEND_BONUS_PLAYER_LEVEL)) // Recruit-a-Friend eligibility uses the player's real progression level.
                 return false;
             break;
         default: // normal case

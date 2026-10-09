@@ -418,7 +418,7 @@ int32 SpellEffectInfo::CalcValue(WorldObject const* caster, int32 const* bp, Uni
     // xinef: added basePointsPerLevel check
     if (casterUnit && basePointsPerLevel != 0.0f)
     {
-        int32 level = int32(casterUnit->GetLevel());
+        int32 level = int32(casterUnit->GetLevel()); // Per-level spell values use the caster's actual level, not a target-relative level.
         if (level > int32(_spellInfo->MaxLevel) && _spellInfo->MaxLevel > 0)
             level = int32(_spellInfo->MaxLevel);
         else if (level < int32(_spellInfo->BaseLevel))
@@ -462,7 +462,7 @@ int32 SpellEffectInfo::CalcValue(WorldObject const* caster, int32 const* bp, Uni
 
         // amount multiplication based on caster's level
         if (!casterUnit->IsControlledByPlayer() &&
-                _spellInfo->SpellLevel && _spellInfo->SpellLevel != casterUnit->GetLevel() &&
+                _spellInfo->SpellLevel && _spellInfo->SpellLevel != casterUnit->GetLevel() && // Creature spell scaling compares against the caster's native level.
                 !basePointsPerLevel && _spellInfo->HasAttribute(SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL))
         {
             bool canEffectScale = false;
@@ -510,7 +510,7 @@ int32 SpellEffectInfo::CalcValue(WorldObject const* caster, int32 const* bp, Uni
             {
                 CreatureTemplate const* cInfo = casterUnit->ToCreature()->GetCreatureTemplate();
 
-                CreatureBaseStats const* pCBS = sObjectMgr->GetCreatureBaseStats(casterUnit->GetLevel(), casterUnit->getClass());
+                CreatureBaseStats const* pCBS = sObjectMgr->GetCreatureBaseStats(casterUnit->GetLevel(), casterUnit->getClass()); // DBC creature base stats are indexed by native caster level.
                 float CBSPowerCreature = pCBS->BaseDamage[cInfo->expansion];
                 CreatureBaseStats const* spellCBS = sObjectMgr->GetCreatureBaseStats(_spellInfo->SpellLevel, casterUnit->getClass());
                 float CBSPowerSpell = spellCBS->BaseDamage[cInfo->expansion];
@@ -560,7 +560,7 @@ float SpellEffectInfo::CalcRadius(WorldObject* caster, Spell* spell) const
     if (caster)
     {
         if (Unit* unitCaster = caster->ToUnit())
-            radius += RadiusEntry->RadiusPerLevel * unitCaster->GetLevel();
+            radius += RadiusEntry->RadiusPerLevel * unitCaster->GetLevel(); // Spell radius progression is defined by the caster's actual level.
 
         radius = std::min(radius, RadiusEntry->RadiusMax);
         if (Player* modOwner = caster->GetSpellModOwner())

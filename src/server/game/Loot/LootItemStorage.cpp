@@ -17,6 +17,7 @@
 
 #include "LootItemStorage.h"
 #include "DatabaseEnv.h"
+#include "ItemEnchantmentMgr.h"
 #include "ObjectMgr.h"
 #include "PreparedStatement.h"
 #include "QueryResult.h"
@@ -198,6 +199,10 @@ bool LootItemStorage::LoadStoredLoot(Item* item, Player* player)
             li.needs_quest = it2->needs_quest;
             li.randomPropertyId = it2->randomPropertyId;
             li.randomSuffix = it2->randomSuffix;
+            li.has_random_property = li.randomPropertyId != 0;
+            li.has_random_suffix = li.randomSuffix != 0;
+            uint32 enchantmentId = li.randomPropertyId < 0 ? uint32(-li.randomPropertyId) : uint32(li.randomPropertyId);
+            GetItemEnchantFamilies(enchantmentId, li.randomPropertyFamily, li.randomSuffixFamily);
             li.rollWinnerGUID = ObjectGuid::Empty;
             li.groupid = 0;
 

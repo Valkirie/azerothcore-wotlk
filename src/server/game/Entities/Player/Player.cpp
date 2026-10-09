@@ -20,9 +20,9 @@
 #include "AchievementMgr.h"
 #include "AreaDefines.h"
 #include "ArenaSpectator.h"
+#include "Battlegrounds/ArenaSeason/ArenaSeasonMgr.h"
 #include "ArenaTeam.h"
 #include "ArenaTeamMgr.h"
-#include "ArenaSeasonMgr.h"
 #include "Battlefield.h"
 #include "BattlefieldMgr.h"
 #include "BattlefieldWG.h"
@@ -82,6 +82,7 @@
 #include "Tokenize.h"
 #include "Trainer.h"
 #include "Transport.h"
+#include "TypeContainerVisitor.h"
 #include "Unit.h"
 #include "UpdateData.h"
 #include "Util.h"
@@ -96,6 +97,20 @@
 #include "WorldStatePackets.h"
 #include <cmath>
 #include <queue>
+
+class LevelScalingUpdateWorker
+{
+public:
+    void Visit(std::unordered_map<ObjectGuid, Creature*>& creatureMap)
+    {
+        for (auto const& pair : creatureMap)
+            if (pair.second && pair.second->IsInWorld())
+                pair.second->ForceLevelScalingUpdate();
+    }
+
+    template<class T>
+    void Visit(std::unordered_map<ObjectGuid, T*>&) { }
+};
 
 /// @todo: this import is not necessary for compilation and marked as unused by the IDE
 //  however, for some reasons removing it would cause a damn linking issue
@@ -2557,6 +2572,13 @@ void Player::GiveLevel(uint8 level)
     // update level to hunter/summon pet
     if (Pet* pet = GetPet())
         pet->SynchronizeLevelWithOwner();
+
+    if (IsInWorld())
+    {
+        LevelScalingUpdateWorker worker;
+        TypeContainerVisitor<LevelScalingUpdateWorker, MapStoredObjectTypesContainer> visitor(worker);
+        visitor.Visit(GetMap()->GetObjectsStore());
+    }
 
     MailLevelReward const* mailReward = sObjectMgr->GetMailLevelReward(level, getRaceMask());
     if (mailReward && sScriptMgr->OnPlayerCanGiveMailRewardAtGiveLevel(this, level))
@@ -8362,6 +8384,8 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
     // need know merged fishing/corpse loot type for achievements
     loot->loot_type = loot_type;
 
+    GetScaledLootForPlayer(loot);
+
     if (!sScriptMgr->OnAllowedToLootContainerCheck(this, guid))
     {
         SendLootError(guid, LOOT_ERROR_DIDNT_KILL);
@@ -8389,6 +8413,21 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
     }
     else
         SendLootError(guid, LOOT_ERROR_DIDNT_KILL);
+}
+
+void Player::GetScaledLootForPlayer(Loot* loot)
+{
+    if (!loot)
+        return;
+
+    uint32 playerLevel = getAreaZoneLevel();
+    uint32 maxSlot = loot->GetMaxSlotInLootFor(this);
+    for (uint32 slot = 0; slot < maxSlot; ++slot)
+    {
+        LootItem* lootItem = loot->LootItemInSlot(slot, this);
+        if (lootItem)
+            lootItem->ScaleForPlayer(playerLevel, this);
+    }
 }
 
 void Player::SendLootError(ObjectGuid guid, LootError error)
@@ -10954,7 +10993,15 @@ bool Player::BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uin
 
     VendorItem const* crItem = vItems->GetItem(vendorslot);
     // store diff item (cheating)
-    if (!crItem || crItem->item != item)
+    if (!crItem)
+    {
+        SendBuyError(BUY_ERR_CANT_FIND_ITEM, creature, item, 0);
+        return false;
+    }
+
+    bool isNotScaledLootFromVendor = sObjectMgr->IsNotScaledLootFromVendor(crItem->item);
+    uint32 expectedItem = isNotScaledLootFromVendor ? crItem->item : LootStore::LoadScaledLoot(crItem->item, this);
+    if (expectedItem != item)
     {
         SendBuyError(BUY_ERR_CANT_FIND_ITEM, creature, item, 0);
         return false;
@@ -14592,9 +14639,94 @@ void Player::ResummonPetTemporaryUnSummonedIfAny()
 
     Pet* newPet = new Pet(this);
     if (!newPet->LoadPetFromDB(this, 0, m_temporaryUnsummonedPetNumber, true))
+    {
         delete newPet;
+        return;
+    }
 
     m_temporaryUnsummonedPetNumber = 0;
+}
+
+void Player::SetPendingPetProxyState(uint32 petNumber, uint32 health, uint32 focus, Position const& position,
+    ThreatManager::Snapshot&& threat, CreatureSpellCooldowns&& cooldowns)
+{
+    // Keep transient state in memory for the normal asynchronous temporary-pet reload.
+    m_pendingPetProxyState = PendingPetProxyState{ petNumber, health, focus, position, std::move(threat), std::move(cooldowns) };
+
+    // Surviving pets restore in memory; dead pets and logout require durable state before this Player is discarded.
+    if (health && !GetSession()->PlayerLogout())
+        return;
+
+    // Keep the loaded stable cache consistent with the database update below.
+    if (m_petStable && m_petStable->CurrentPet && m_petStable->CurrentPet->PetNumber == petNumber)
+    {
+        m_petStable->CurrentPet->Health = health;
+        m_petStable->CurrentPet->Mana = focus;
+    }
+
+    // Persist health and Focus so a dead or logged-out proxy cannot roll back pet state.
+    CharacterDatabaseTransaction transaction = CharacterDatabase.BeginTransaction();
+    CharacterDatabasePreparedStatement* statement = CharacterDatabase.GetPreparedStatement(CHAR_UPD_CHAR_PET_STATE);
+    statement->SetData(0, health);
+    statement->SetData(1, focus);
+    statement->SetData(2, GetGUID().GetCounter());
+    statement->SetData(3, petNumber);
+    transaction->Append(statement);
+
+    // Replace persisted cooldowns with the final cooldown state produced while riding.
+    statement = CharacterDatabase.GetPreparedStatement(CHAR_DEL_PET_SPELL_COOLDOWNS);
+    statement->SetData(0, petNumber);
+    transaction->Append(statement);
+
+    time_t currentTime = GameTime::GetGameTime().count();
+    uint32 currentMilliseconds = GameTime::GetGameTimeMS().count();
+    uint32 infiniteCooldownTime = currentMilliseconds + infinityCooldownDelayCheck;
+    for (auto const& [spellId, cooldown] : m_pendingPetProxyState->Cooldowns)
+    {
+        if (cooldown.end <= currentMilliseconds + IN_MILLISECONDS || cooldown.end > infiniteCooldownTime)
+            continue;
+
+        statement = CharacterDatabase.GetPreparedStatement(CHAR_INS_PET_SPELL_COOLDOWN);
+        statement->SetData(0, petNumber);
+        statement->SetData(1, spellId);
+        statement->SetData(2, cooldown.category);
+        statement->SetData(3, ((cooldown.end - currentMilliseconds) / IN_MILLISECONDS) + currentTime);
+        transaction->Append(statement);
+    }
+
+    CharacterDatabase.CommitTransaction(transaction);
+    m_pendingPetProxyState.reset();
+}
+
+void Player::ApplyPendingPetProxyState(Pet* pet)
+{
+    if (!m_pendingPetProxyState || !pet)
+        return;
+
+    // Never apply one pet's proxy state to another pet that happens to finish loading first.
+    if (pet->GetCharmInfo()->GetPetNumber() != m_pendingPetProxyState->PetNumber)
+        return;
+
+    // Restore resources, cooldowns, and position through normal map relocation handling.
+    uint32 health = std::min(m_pendingPetProxyState->Health, pet->GetMaxHealth());
+    pet->SetCreatureSpellCooldowns(std::move(m_pendingPetProxyState->Cooldowns));
+    pet->SetPower(POWER_FOCUS, std::min(m_pendingPetProxyState->Focus, pet->GetMaxPower(POWER_FOCUS)));
+    pet->NearTeleportTo(m_pendingPetProxyState->PetPosition);
+    if (health)
+    {
+        // Restore reverse threat and immediately resume attacking the highest valid aggressor.
+        pet->SetHealth(health);
+        pet->GetThreatMgr().RestoreSnapshot(m_pendingPetProxyState->Threat);
+
+        if (Unit* aggressor = pet->GetThreatMgr().GetHighestThreateningUnit(); aggressor && pet->IsAIEnabled &&
+            aggressor->IsAlive() && pet->CanCreatureAttack(aggressor) && !aggressor->HasBreakableByDamageCrowdControlAura())
+            pet->AI()->AttackedBy(aggressor);
+    }
+    else
+        // Defensive fallback for zero-health pending state; proxy death normally follows the non-resummon path.
+        pet->setDeathState(DeathState::JustDied);
+
+    m_pendingPetProxyState.reset();
 }
 
 bool Player::CanResummonPet(uint32 spellid)
@@ -14625,6 +14757,10 @@ bool Player::CanSeeSpellClickOn(Creature const* c) const
 {
     if (!c->HasNpcFlag(UNIT_NPC_FLAG_SPELLCLICK))
         return false;
+
+    if (c->IsPet())
+        if (Pet const* pet = static_cast<Pet const*>(c); pet->getPetType() == HUNTER_PET && pet->GetOwnerGUID() == GetGUID())
+            return pet->IsGroundHunterPet();
 
     SpellClickInfoMapBounds clickPair = sObjectMgr->GetSpellClickInfoMapBounds(c->GetEntry());
     if (clickPair.first == clickPair.second)
@@ -16746,6 +16882,103 @@ std::string Player::GetDebugInfo() const
     std::stringstream sstr;
     sstr << Unit::GetDebugInfo();
     return sstr.str();
+}
+
+namespace
+{
+std::array<ServerConfigs, MAX_ITEM_QUALITY> const qualityToCoeff =
+{
+    RATE_WEIGHT_ITEM_POOR, RATE_WEIGHT_ITEM_NORMAL, RATE_WEIGHT_ITEM_UNCOMMON,
+    RATE_WEIGHT_ITEM_RARE, RATE_WEIGHT_ITEM_EPIC, RATE_WEIGHT_ITEM_LEGENDARY,
+    RATE_WEIGHT_ITEM_ARTIFACT, RATE_WEIGHT_ITEM_HEIRLOOM
+};
+}
+
+// Calculate effective item level from usable weapons and armor in equipment/inventory.
+uint32 Player::GetItemLevel() const
+{
+    float totalItemLevel = 0.0f;
+    uint8 itemCount = 0;
+    auto addItem = [&](Item const* item)
+    {
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        if (proto && (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR) && CanUseItem(proto) <= EQUIP_ERR_CANT_EQUIP_SKILL)
+        {
+            ++itemCount;
+            totalItemLevel += std::max(static_cast<float>(proto->ItemLevel) * sWorld->getRate(qualityToCoeff[proto->Quality]), 1.0f);
+        }
+    };
+
+    for (int slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+        addItem(GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    for (int slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        addItem(GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    for (int bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+        if (Item* bagItem = GetItemByPos(INVENTORY_SLOT_BAG_0, bag))
+            if (Bag* container = bagItem->ToBag())
+            for (uint32 slot = 0; slot < container->GetBagSize(); ++slot)
+                addItem(GetItemByPos(bag, slot));
+
+    totalItemLevel /= std::max(static_cast<float>(itemCount), static_cast<float>(sObjectMgr->GetPlayerExpectedItemCount(GetLevel())));
+    return static_cast<uint32>(std::max(totalItemLevel, 5.0f));
+}
+
+// An item is relevant to smart loot when it is level-appropriate and usable.
+bool Player::IsRelevant(Item const* item) const
+{
+    return item && item->GetTemplate() &&
+        static_cast<float>(item->GetTemplate()->RequiredLevel) / static_cast<float>(GetLevel()) >= 0.75f &&
+        CanUseItem(item->GetTemplate()) == EQUIP_ERR_OK;
+}
+
+// Count relevant items of a quality, optionally including the inventory and bags.
+float Player::countRelevant(uint32 quality, bool inventory) const
+{
+    float count = 0.0f;
+    auto countItem = [&](Item* item)
+    {
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        if (proto && (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR) && IsRelevant(item) && proto->Quality == quality)
+            count += 1.0f;
+    };
+
+    for (int slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+        countItem(GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    if (inventory)
+    {
+        for (int slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+            countItem(GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+        for (int bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+            if (Item* bagItem = GetItemByPos(INVENTORY_SLOT_BAG_0, bag))
+                if (Bag* container = bagItem->ToBag())
+                    for (uint32 slot = 0; slot < container->GetBagSize(); ++slot)
+                        countItem(GetItemByPos(bag, slot));
+    }
+    return count;
+}
+
+// Combine item-level and quality-quantity signals into the smart-loot coefficient.
+float Player::GetItemLevelCoeff(uint32 quality) const
+{
+    if (!sWorld->getBoolConfig(CONFIG_BOOL_SMART_LOOT) || GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
+        return 1.0f;
+
+    float itemLevelModifier = std::max(static_cast<float>(sObjectMgr->GetPlayerExpectedItemLevel(GetLevel())) / static_cast<float>(GetItemLevel()), 1.0f);
+    float quantityModifier = 1.0f;
+    uint32 level = std::min(static_cast<uint8>(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)), GetLevel());
+    switch (quality)
+    {
+        case ITEM_QUALITY_UNCOMMON:
+        case ITEM_QUALITY_RARE:
+        case ITEM_QUALITY_EPIC:
+            quantityModifier = 1.0f - countRelevant(quality, true);
+            break;
+        default:
+            break;
+    }
+    (void)level;
+    float maxAmount = static_cast<float>(sWorld->getIntConfig(CONFIG_INT32_SMART_LOOT_AMOUNT));
+    return std::min(std::max(itemLevelModifier, quantityModifier), maxAmount);
 }
 
 void Player::SendSystemMessage(std::string_view msg, bool escapeCharacters)

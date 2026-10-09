@@ -724,6 +724,46 @@ static constexpr uint32 MAX_QUEST_MONEY_REWARDS = 10;
 typedef std::array<uint32, MAX_QUEST_MONEY_REWARDS> QuestMoneyRewardArray;
 typedef std::unordered_map<uint32, QuestMoneyRewardArray> QuestMoneyRewardStore;
 
+enum SpellType
+{
+    SPELLTYPE_UNK,
+    SPELLTYPE_DAMAGE,
+    SPELLTYPE_POWER,
+    SPELLTYPE_CHARSTAT,
+    SPELLTYPE_HEAL,
+    SPELLTYPE_RESIST,
+    SPELLTYPE_AMORMAGICPEN,
+    MAX_SPELLTYPE
+};
+
+enum AggroType
+{
+    AGGRO_NONE = 0,
+    AGGRO_EVP = 1,
+    AGGRO_PVE = 2,
+    AGGRO_PVP = 4,
+    AGGRO_EVE = 8,
+};
+
+struct ZoneFlex
+{
+    std::string areaName;
+    uint32 areaId;
+    uint32 mapId;
+    uint8 LevelRangeMin;
+    uint8 LevelRangeMax;
+    uint32 areaFlags;
+
+    bool IsLowLevel() const { return (areaFlags & AREA_FLAG_LOWLEVEL) != 0; }
+    bool IsScalingDisabled() const { return (areaFlags & (AREA_FLAG_LOWLEVEL | AREA_FLAG_CAPITAL | AREA_FLAG_CITY)) != 0; }
+};
+
+typedef std::unordered_map<uint32, ZoneFlex> ZoneFlexMap;
+typedef std::unordered_map<uint32, uint32> RemplacementIdsMap;
+typedef std::unordered_map<uint32, RemplacementIdsMap> LootConsumableScaleMap;
+typedef std::unordered_set<uint32> ItemsNotScaledFromVendors;
+typedef std::unordered_map<uint32, int8> CreatureForceLevelVar;
+
 class PlayerDumpReader;
 
 class ObjectMgr
@@ -785,6 +825,8 @@ public:
     ItemTemplate const* GetItemTemplate(uint32 entry);
     [[nodiscard]] ItemTemplateContainer const* GetItemTemplateStore() const { return &_itemTemplateStore; }
     [[nodiscard]] std::vector<ItemTemplate*> const* GetItemTemplateStoreFast() const { return &_itemTemplateStoreFast; }
+    void SetItemTemplateForTest(ItemTemplate const& itemTemplate);
+    void RemoveItemTemplateForTest(uint32 entry);
 
     uint32 GetModelForTotem(SummonSlot totemSlot, Races race) const;
 
@@ -1131,6 +1173,9 @@ public:
     }
 
     CreatureBaseStats const* GetCreatureBaseStats(uint8 level, uint8 unitClass);
+    void SetCreatureBaseStatsForTest(uint8 level, uint8 unitClass, CreatureBaseStats const& stats);
+    void RemoveCreatureBaseStatsForTest(uint8 level, uint8 unitClass);
+    void SetPlayerClassLevelInfoForTest(uint8 unitClass, uint8 level, uint32 baseHealth, uint32 baseMana);
 
     void SetHighestGuids();
 
@@ -1304,6 +1349,8 @@ public:
     [[nodiscard]] ItemLocale const* GetItemLocale(uint32 entry) const
     {
         ItemLocaleContainer::const_iterator itr = _itemLocaleStore.find(entry);
+        if (itr == _itemLocaleStore.end())
+            itr = _itemLocaleStore.find(GetItemParentEntry(entry));
         if (itr == _itemLocaleStore.end()) return nullptr;
         return &itr->second;
     }
@@ -1726,6 +1773,73 @@ private:
         unsigned short m_state;
     };
     std::vector<GameobjectInstanceSavedState> GameobjectInstanceSavedStateList;
+
+public:
+    // Returns whether the owner/target pair is eligible for Rochenoire level scaling.
+    bool IsScalable(Unit* const owner, Unit* const target) const;
+    // Returns whether scaled values are converted into a native creature storage domain.
+    bool UsesCreatureStorageScaling(Unit* owner, Unit* target) const;
+    // Resolves the effective creature level used when interacting with a player.
+    uint8 GetLevelScaled(Unit* owner, Unit* target) const;
+    // Returns the effective-to-native creature health or mana ratio for a level.
+    float GetCreatureBaseStatRatio(Creature const* creature, uint8 scaledLevel, SpellType scalingType) const;
+
+    ZoneFlex const* GetAreaZoneFlex(uint32 areaId, uint32 zoneId = 0) const;
+    void SetZoneFlexForTest(ZoneFlex const& zoneFlex);
+    void RemoveZoneFlexForTest(uint32 areaId);
+    ZoneFlex const* GetZoneFlexForTest(uint32 areaId) const { return GetZoneFlex(areaId); }
+
+    // Scales creature armor and damage while preserving the original level ratio.
+    uint32 ScaleArmor(Unit* owner, Unit* target, uint32 armor) const;
+    float ScaleDamage(Unit* owner, Unit* target, float damage, float& ratio, SpellType scalingType) const { bool isScaled = false; return ScaleDamage(owner, target, damage, isScaled, ratio, nullptr, EFFECT_0, false, scalingType); }
+    float ScaleDamage(Unit* owner, Unit* target, float damage, SpellType scalingType) const { bool isScaled = false; float ratio = 1.0f; return ScaleDamage(owner, target, damage, isScaled, ratio, nullptr, EFFECT_0, false, scalingType); }
+    float ScaleDamage(Unit* owner, Unit* target, float damage) const { bool isScaled = false; float ratio = 1.0f; return ScaleDamage(owner, target, damage, isScaled, ratio); }
+    float ScaleDamage(Unit* owner, Unit* target, float damage, float& ratio) const { bool isScaled = false; return ScaleDamage(owner, target, damage, isScaled, ratio); }
+    float ScaleDamage(Unit* owner, Unit* target, float damage, bool& isScaled) const { float ratio = 1.0f; return ScaleDamage(owner, target, damage, isScaled, ratio); }
+    float ScaleDamage(Unit* owner, Unit* target, float damage, bool& isScaled, float& ratio, SpellInfo const* spellProto = nullptr, SpellEffIndex effIndex = EFFECT_0, bool isRevert = false, SpellType forcedScalingType = SPELLTYPE_UNK) const;
+    void SetScaleDamageRatio(Unit* owner, Unit* target, float& ratio) const { uint32 damage = 100; bool isScaled = false; ScaleDamage(owner, target, damage, isScaled, ratio); }
+    float ScaleDamageReverse(Unit* owner, Unit* target, float damage, float& ratio, SpellType scalingType) const { bool isScaled = false; return ScaleDamage(owner, target, damage, isScaled, ratio, nullptr, EFFECT_0, true, scalingType); }
+    float ScaleDamageReverse(Unit* owner, Unit* target, float damage, SpellType scalingType) const { bool isScaled = false; float ratio = 1.0f; return ScaleDamage(owner, target, damage, isScaled, ratio, nullptr, EFFECT_0, true, scalingType); }
+    float ScaleDamageReverse(Unit* owner, Unit* target, float damage, SpellInfo const* spellProto = nullptr) const { bool isScaled = false; float ratio = 1.0f; return ScaleDamage(owner, target, damage, isScaled, ratio, spellProto, EFFECT_0, true); }
+    float ScaleDamageReverse(Unit* owner, Unit* target, float damage, float& ratio, SpellInfo const* spellProto = nullptr) const { bool isScaled = false; return ScaleDamage(owner, target, damage, isScaled, ratio, spellProto, EFFECT_0, true); }
+    // Classifies a spell effect for the custom damage, heal, or power scaling path.
+    SpellType GetSpellDamageType(SpellInfo const* spellProto, SpellEffIndex effIndex) const;
+
+    // Returns the expected number of equipped items for a player level.
+    uint8 GetPlayerExpectedItemCount(uint8 level) const;
+    // Finds the player level whose expected item level is closest to the supplied value.
+    uint8 GetClosestLevelForItemLevel(uint8 itemLevel) const;
+    // Returns the expected item level used by Rochenoire item-level scaling.
+    uint8 GetPlayerExpectedItemLevel(uint8 level) const;
+
+    // Loads zone and creature level overrides used by custom scaling.
+    void LoadZoneScale();
+    void LoadLevelScaleCreature();
+    void LoadLevelScaleCreatureTemplate();
+    void LoadLootConsumableScale();
+    void LoadItemsNotScaledFromVendors();
+    // Converts a scaled loot item entry back to its base item entry.
+    uint32 GetItemParentEntry(uint32 itemId) const;
+    // Returns the level-appropriate replacement for a consumable loot item.
+    uint32 const GetItemLootScale(uint32 entry, uint8 playerLevel) const;
+    // Returns whether an item is exempt from vendor loot scaling.
+    bool IsNotScaledLootFromVendor(uint32 itemId) const;
+
+    int8 const* GetLevelScaleCreatureTemplate(uint32 entry) const;
+    int8 const* GetLevelScaleCreature(uint32 guid) const;
+
+private:
+    ZoneFlexMap mZoneFlexMap;
+    CreatureForceLevelVar mCreatureForcedLevelVarMap;
+    CreatureForceLevelVar mCreatureForcedLevelVarMapTemplate;
+    LootConsumableScaleMap mLootConsumableScaleMap;
+    ItemsNotScaledFromVendors mItemsNotScaledFromVendors;
+
+    ZoneFlex const* GetZoneFlex(uint32 id) const
+    {
+        ZoneFlexMap::const_iterator itr = mZoneFlexMap.find(id);
+        return itr != mZoneFlexMap.end() ? &itr->second : nullptr;
+    }
 };
 
 #define sObjectMgr ObjectMgr::instance()

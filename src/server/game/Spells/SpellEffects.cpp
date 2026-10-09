@@ -360,7 +360,7 @@ void Spell::EffectSchoolDMG(SpellEffIndex effIndex)
                     // Shield Slam
                     if (m_spellInfo->SpellFamilyFlags[1] & 0x200 && m_spellInfo->GetCategory() == 1209)
                     {
-                        uint8 level = unitCaster->GetLevel();
+                        uint8 level = unitCaster->getLevelForTarget(unitTarget);
                         // xinef: shield block should increase the limit
                         float limit = unitCaster->HasAura(2565) ? 2.0f : 1.0f;
                         uint32 block_value = unitCaster->GetShieldBlockValue(uint32(float(level) * 24.5f * limit), uint32(float(level) * 34.5f * limit));
@@ -663,7 +663,7 @@ void Spell::EffectSchoolDMG(SpellEffIndex effIndex)
                     // Shield of Righteousness
                     if (m_spellInfo->SpellFamilyFlags[EFFECT_1] & 0x100000)
                     {
-                        uint8 level = unitCaster->GetLevel();
+                        uint8 level = unitCaster->GetLevel(); // Shield of Righteousness uses the caster's actual level for its base block value.
                         uint32 block_value = unitCaster->GetShieldBlockValue(uint32(float(level) * 29.5f), uint32(float(level) * 34.5f));
                         if (unitCaster->GetAuraEffect(64882, EFFECT_0))
                             block_value += 225;
@@ -1518,7 +1518,8 @@ void Spell::EffectPowerBurn(SpellEffIndex effIndex)
     // burn x% of target's mana, up to maximum of 2x% of caster's mana (Mana Burn)
     if (unitCaster && m_spellInfo->Id == 8129)
     {
-        int32 maxDamage = int32(CalculatePct(unitCaster->GetMaxPower(PowerType), damage * 2));
+        float ratio = 1.0f;
+        int32 maxDamage = int32(CalculatePct(sObjectMgr->ScaleDamage(unitCaster, unitTarget, unitCaster->GetMaxPower(PowerType), ratio, SPELLTYPE_POWER), damage * 2));
         damage = int32(CalculatePct(unitTarget->GetMaxPower(PowerType), damage));
         damage = std::min(damage, maxDamage);
 
@@ -1531,7 +1532,10 @@ void Spell::EffectPowerBurn(SpellEffIndex effIndex)
     if (PowerType == POWER_MANA)
         power -= unitTarget->GetSpellCritDamageReduction(power);
 
-    int32 newDamage = -(unitTarget->ModifyPower(PowerType, -power));
+    float ratio = 1.0f;
+    int32 newDamage = -(unitTarget->ModifyPower(PowerType, -int32(std::lround(sObjectMgr->ScaleDamage(unitCaster, unitTarget, float(power), ratio, SPELLTYPE_POWER)))));
+    if (ratio != 0.0f)
+        newDamage = int32(std::lround(float(newDamage) / ratio));
 
     // NO - Not a typo - EffectPowerBurn uses effect value multiplier - not effect damage multiplier
     float dmgMultiplier = m_spellInfo->Effects[effIndex].CalcValueMultiplier(m_originalCaster, this);
@@ -3328,7 +3332,7 @@ void Spell::EffectTameCreature(SpellEffIndex /*effIndex*/)
     // "kill" original creature
     creatureTarget->DespawnOrUnsummon();
 
-    uint8 level = (creatureTarget->GetLevel() < (unitCaster->GetLevel() - 5)) ? (unitCaster->GetLevel() - 5) : creatureTarget->GetLevel();
+    uint8 level = (creatureTarget->getLevelForTarget(unitCaster) + 5 < unitCaster->getLevelForTarget(creatureTarget)) ? (unitCaster->getLevelForTarget(creatureTarget) - 5) : creatureTarget->getLevelForTarget(unitCaster);
 
     // prepare visual effect for levelup
     pet->SetUInt32Value(UNIT_FIELD_LEVEL, level - 1);
@@ -3883,7 +3887,7 @@ void Spell::EffectThreat(SpellEffIndex /*effIndex*/)
         return;
 
     // SPELL_EFFECT_THREAT adds flat threat that should not be modified by threat reduction
-    unitTarget->GetThreatMgr().AddThreat(unitCaster, float(damage), m_spellInfo, true);
+    unitTarget->AddThreat(unitCaster, float(damage), m_spellInfo->GetSchoolMask(), m_spellInfo, false);
 }
 
 void Spell::EffectHealMaxHealth(SpellEffIndex /*effIndex*/)
@@ -5126,7 +5130,7 @@ void Spell::EffectSkinning(SpellEffIndex /*effIndex*/)
         return;
 
     Creature* creature = unitTarget->ToCreature();
-    int32 targetLevel = creature->GetLevel();
+    int32 targetLevel = creature->getLevelForTarget(unitCaster);
 
     uint32 skill = creature->GetCreatureTemplate()->GetRequiredLootSkill();
 

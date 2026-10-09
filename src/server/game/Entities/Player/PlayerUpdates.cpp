@@ -20,6 +20,7 @@
 #include "CellImpl.h"
 #include "Channel.h"
 #include "ChannelMgr.h"
+#include "Chat.h"
 #include "Formulas.h"
 #include "GameTime.h"
 #include "GridNotifiers.h"
@@ -1297,6 +1298,11 @@ void Player::UpdateZone(uint32 newZone, uint32 newArea, bool force)
                                       // just area change, works strange...
         if (Guild* guild = GetGuild())
             guild->UpdateMemberData(this, GUILD_MEMBER_DATA_ZONEID, newZone);
+
+        // Notify the player of the configured level range when entering a scalable zone.
+        if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(newArea, newZone))
+            if (!zoneFlex->IsLowLevel())
+                ChatHandler(GetSession()).PSendSysMessage(LANG_ZONE_LEVEL_SCALING_RANGE, zoneFlex->LevelRangeMin, zoneFlex->LevelRangeMax);
     }
 
     GetMap()->UpdatePlayerZoneStats(m_zoneUpdateId, newZone);

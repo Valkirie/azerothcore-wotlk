@@ -64,6 +64,7 @@ public:
     bool Create(ObjectGuid::LowType guidlow, Map* map, uint32 phaseMask, uint32 Entry, uint32 vehId, float x, float y, float z, float ang, CreatureData const* data = nullptr);
     bool LoadCreaturesAddon(bool reload = false);
     void SelectLevel(bool changelevel = true);
+    void RefreshLevelVariation();
     void LoadEquipment(int8 id = 1, bool force = false);
 
     [[nodiscard]] ObjectGuid::LowType GetSpawnId() const { return m_spawnId; }
@@ -254,6 +255,8 @@ public:
 
     uint32 m_spells[MAX_CREATURE_SPELLS];
     CreatureSpellCooldowns m_CreatureSpellCooldowns;
+    [[nodiscard]] CreatureSpellCooldowns const& GetCreatureSpellCooldowns() const { return m_CreatureSpellCooldowns; }
+    void SetCreatureSpellCooldowns(CreatureSpellCooldowns cooldowns) { m_CreatureSpellCooldowns = std::move(cooldowns); }
     uint32 m_ProhibitSchoolTime[7];
 
     bool CanStartAttack(Unit const* u, bool force = false) const;

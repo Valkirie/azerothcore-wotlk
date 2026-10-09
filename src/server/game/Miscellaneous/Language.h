@@ -1284,6 +1284,9 @@ enum AcoreStrings
 
     // Use for not-in-offcial-sources patches
     //                                    10000-10999
+    LANG_NPCINFO_LEVEL_SCALED             = 21030,
+    LANG_NPCINFO_LEVEL_VARIATION          = 21031,
+    LANG_ZONE_LEVEL_SCALING_RANGE         = 21032,
     // opvp hp
     LANG_OPVP_HP_CAPTURE_OVERLOOK_H     = 10001,
     LANG_OPVP_HP_CAPTURE_OVERLOOK_A     = 10002,

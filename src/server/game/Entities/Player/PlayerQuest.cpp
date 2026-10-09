@@ -447,7 +447,7 @@ void Player::AddQuestAndCheckCompletion(Quest const* quest, Object* questGiver)
             bool destroyItem = true;
             for (int i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
             {
-                if (quest->RequiredItemId[i] == item->GetEntry() && item->GetTemplate()->MaxCount > 0)
+                if (sObjectMgr->GetItemParentEntry(quest->RequiredItemId[i]) == sObjectMgr->GetItemParentEntry(item->GetEntry()) && item->GetTemplate()->MaxCount > 0)
                 {
                     destroyItem = false;
                     break;
@@ -484,15 +484,21 @@ bool Player::CanRewardQuest(Quest const* quest, uint32 reward, bool msg)
         return false;
     }
 
+    bool const rewarded = IsQuestRewarded(quest->GetQuestId()) && !quest->IsDFQuest() && !(quest->IsDaily() || quest->IsWeekly() || quest->IsMonthly());
+    bool const rewardWithMoney = GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(this);
+    uint32 questXp = rewarded || rewardWithMoney ? 0 : CalculateQuestRewardXP(quest);
+    uint8 rewardLevel = CalculateQuestRewardLevel(questXp);
+
     ItemPosCountVec dest;
     if (quest->GetRewChoiceItemsCount() > 0)
     {
         if (quest->RewardChoiceItemId[reward])
         {
-            InventoryResult res = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, quest->RewardChoiceItemId[reward], quest->RewardChoiceItemCount[reward]);
+            uint32 itemId = LootStore::LoadScaledLoot(quest->RewardChoiceItemId[reward], this, rewardLevel);
+            InventoryResult res = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardChoiceItemCount[reward]);
             if (res != EQUIP_ERR_OK)
             {
-                SendEquipError(res, nullptr, nullptr, quest->RewardChoiceItemId[reward]);
+                SendEquipError(res, nullptr, nullptr, itemId);
                 return false;
             }
         }
@@ -504,10 +510,11 @@ bool Player::CanRewardQuest(Quest const* quest, uint32 reward, bool msg)
         {
             if (quest->RewardItemId[i])
             {
-                InventoryResult res = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, quest->RewardItemId[i], quest->RewardItemIdCount[i]);
+                uint32 itemId = LootStore::LoadScaledLoot(quest->RewardItemId[i], this, rewardLevel);
+                InventoryResult res = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardItemIdCount[i]);
                 if (res != EQUIP_ERR_OK)
                 {
-                    SendEquipError(res, nullptr, nullptr, quest->RewardItemId[i]);
+                    SendEquipError(res, nullptr, nullptr, itemId);
                     return false;
                 }
             }
@@ -679,7 +686,12 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     SetMustDelayTeleport(true);
 
     uint32 quest_id = quest->GetQuestId();
+    bool const rewarded = IsQuestRewarded(quest_id) && !quest->IsDFQuest() && !(quest->IsDaily() || quest->IsWeekly() || quest->IsMonthly());
+    bool const rewardWithMoney = GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(this);
 
+    // Repeatable quests (not time-based reset ones) should not give XP on subsequent completions
+    uint32 XP = rewarded ? 0 : CalculateQuestRewardXP(quest);
+    uint8 rewardLevel = CalculateQuestRewardLevel(rewardWithMoney ? 0 : XP);
     for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
     {
         if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(quest->RequiredItemId[i]))
@@ -709,6 +721,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     {
         if (uint32 itemId = quest->RewardChoiceItemId[reward])
         {
+            itemId = LootStore::LoadScaledLoot(itemId, this, rewardLevel);
             ItemPosCountVec dest;
             if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardChoiceItemCount[reward]) == EQUIP_ERR_OK)
             {
@@ -730,6 +743,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
         {
             if (uint32 itemId = quest->RewardItemId[i])
             {
+                itemId = LootStore::LoadScaledLoot(itemId, this, rewardLevel);
                 ItemPosCountVec dest;
                 if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardItemIdCount[i]) == EQUIP_ERR_OK)
                 {
@@ -756,14 +770,8 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     if (log_slot < MAX_QUEST_LOG_SIZE)
         SetQuestSlot(log_slot, 0);
 
-    bool const rewarded = IsQuestRewarded(quest_id) && !quest->IsDFQuest() && !(quest->IsDaily() || quest->IsWeekly() || quest->IsMonthly());
-
-    // Repeatable quests (not time-based reset ones) should not give XP on subsequent completions
-    uint32 XP = rewarded ? 0 : CalculateQuestRewardXP(quest);
-
-    sScriptMgr->OnPlayerQuestComputeXP(this, quest, XP);
     int32 moneyRew = 0;
-    if (GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(this))
+    if (rewardWithMoney)
     {
         moneyRew = quest->GetRewMoneyMaxLevel();
     }
@@ -849,7 +857,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     SetRewardedQuest(quest_id);
 
     if (announce)
-        SendQuestReward(quest, XP);
+        SendQuestReward(quest, XP, rewardWithMoney);
 
     // cast spells after mark quest complete (some spells have quest completed state requirements in spell_area data)
     if (quest->GetRewSpellCast() > 0)
@@ -1461,7 +1469,7 @@ bool Player::TakeQuestSourceItem(uint32 questId, bool msg)
 
             bool destroyItem = true;
             for (uint8 n = 0; n < QUEST_ITEM_OBJECTIVES_COUNT; ++n)
-                if (item->StartQuest == questId && srcItemId == quest->RequiredItemId[n])
+                if (item->StartQuest == questId && sObjectMgr->GetItemParentEntry(srcItemId) == sObjectMgr->GetItemParentEntry(quest->RequiredItemId[n]))
                     destroyItem = false;
 
             if (destroyItem)
@@ -1483,7 +1491,25 @@ uint32 Player::CalculateQuestRewardXP(Quest const* quest)
     // handle SPELL_AURA_MOD_XP_QUEST_PCT auras
     xp *= GetTotalAuraMultiplier(SPELL_AURA_MOD_XP_QUEST_PCT);
 
+    sScriptMgr->OnPlayerQuestComputeXP(this, quest, xp);
+
     return xp;
+}
+
+uint8 Player::CalculateQuestRewardLevel(uint32 xp) const
+{
+    uint8 level = GetLevel();
+    uint32 const maxLevel = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
+    uint64 newXP = uint64(GetUInt32Value(PLAYER_XP)) + xp;
+    uint32 nextLevelXP = GetUInt32Value(PLAYER_NEXT_LEVEL_XP);
+
+    while (newXP >= nextLevelXP && level < maxLevel)
+    {
+        newXP -= nextLevelXP;
+        nextLevelXP = sObjectMgr->GetXPForLevel(++level);
+    }
+
+    return level;
 }
 
 bool Player::GetQuestRewardStatus(uint32 quest_id) const
@@ -1908,6 +1934,7 @@ void Player::GroupEventHappens(uint32 questId, WorldObject const* pEventObject)
 
 void Player::ItemAddedQuestCheck(uint32 entry, uint32 count)
 {
+    uint32 parentEntry = sObjectMgr->GetItemParentEntry(entry);
     for (uint8 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
     {
         uint32 questid = GetQuestSlotQuestId(i);
@@ -1926,7 +1953,7 @@ void Player::ItemAddedQuestCheck(uint32 entry, uint32 count)
         for (uint8 j = 0; j < QUEST_ITEM_OBJECTIVES_COUNT; ++j)
         {
             uint32 reqitem = qInfo->RequiredItemId[j];
-            if (reqitem == entry)
+            if (sObjectMgr->GetItemParentEntry(reqitem) == parentEntry)
             {
                 uint32 reqitemcount = qInfo->RequiredItemCount[j];
                 uint16 curitemcount = q_status.ItemCount[j];
@@ -1947,6 +1974,7 @@ void Player::ItemAddedQuestCheck(uint32 entry, uint32 count)
 
 void Player::ItemRemovedQuestCheck(uint32 entry, uint32 count)
 {
+    uint32 parentEntry = sObjectMgr->GetItemParentEntry(entry);
     for (uint8 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
     {
         uint32 questid = GetQuestSlotQuestId(i);
@@ -1963,7 +1991,7 @@ void Player::ItemRemovedQuestCheck(uint32 entry, uint32 count)
         for (uint8 j = 0; j < QUEST_ITEM_OBJECTIVES_COUNT; ++j)
         {
             uint32 reqitem = qInfo->RequiredItemId[j];
-            if (reqitem == entry)
+            if (sObjectMgr->GetItemParentEntry(reqitem) == parentEntry)
             {
                 QuestStatusData& q_status = m_QuestStatus[questid];
                 uint32 reqitemcount = qInfo->RequiredItemCount[j];
@@ -2337,6 +2365,7 @@ void Player::ReputationChanged2(FactionEntry const* factionEntry)
 
 bool Player::HasQuestForItem(uint32 itemid, uint32 excludeQuestId /* 0 */, bool turnIn /* false */, bool* showInLoot /*= nullptr*/) const
 {
+    uint32 parentEntry = sObjectMgr->GetItemParentEntry(itemid);
     for (uint8 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
     {
         uint32 questid = GetQuestSlotQuestId(i);
@@ -2368,7 +2397,7 @@ bool Player::HasQuestForItem(uint32 itemid, uint32 excludeQuestId /* 0 */, bool 
             // This part for ReqItem drop
             for (uint8 j = 0; j < QUEST_ITEM_OBJECTIVES_COUNT; ++j)
             {
-                if (itemid == qinfo->RequiredItemId[j] && q_status.ItemCount[j] < qinfo->RequiredItemCount[j])
+                if (parentEntry == sObjectMgr->GetItemParentEntry(qinfo->RequiredItemId[j]) && q_status.ItemCount[j] < qinfo->RequiredItemCount[j])
                 {
                     if (showInLoot)
                     {
@@ -2394,9 +2423,9 @@ bool Player::HasQuestForItem(uint32 itemid, uint32 excludeQuestId /* 0 */, bool 
             for (uint8 j = 0; j < QUEST_SOURCE_ITEM_IDS_COUNT; ++j)
             {
                 // examined item is a source item
-                if (qinfo->ItemDrop[j] == itemid)
+                if (sObjectMgr->GetItemParentEntry(qinfo->ItemDrop[j]) == parentEntry)
                 {
-                    ItemTemplate const* pProto = sObjectMgr->GetItemTemplate(itemid);
+                    ItemTemplate const* pProto = sObjectMgr->GetItemTemplate(qinfo->ItemDrop[j]);
                     uint32 ownedCount = GetItemCount(itemid, true);
                     // 'unique' item
                     if ((pProto->MaxCount && int32(ownedCount) < pProto->MaxCount) || (turnIn && int32(ownedCount) >= pProto->MaxCount))
@@ -2428,7 +2457,7 @@ void Player::SendQuestComplete(uint32 quest_id)
     LOG_DEBUG("network", "WORLD: Sent SMSG_QUESTUPDATE_COMPLETE quest = {}", quest_id);
 }
 
-void Player::SendQuestReward(Quest const* quest, uint32 XP)
+void Player::SendQuestReward(Quest const* quest, uint32 XP, bool rewardWithMoney)
 {
     uint32 questid = quest->GetQuestId();
     LOG_DEBUG("network", "WORLD: Sent SMSG_QUESTGIVER_QUEST_COMPLETE quest = {}", questid);
@@ -2437,7 +2466,7 @@ void Player::SendQuestReward(Quest const* quest, uint32 XP)
     questGiverQuestComplete.QuestId = questid;
     uint32 rewardMoney = quest->GetRewOrReqMoney(GetLevel());
 
-    if (!IsMaxLevel())
+    if (!rewardWithMoney)
         questGiverQuestComplete.Experience = XP;
     else
         rewardMoney += quest->GetRewMoneyMaxLevel();

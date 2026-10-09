@@ -18,6 +18,7 @@
 #include "Creature.h"
 #include "BattlegroundMgr.h"
 #include "CellImpl.h"
+#include "ObjectMgr.h"
 #include "Common.h"
 #include "CreatureAI.h"
 #include "CreatureAISelector.h"
@@ -929,8 +930,8 @@ void Creature::Update(uint32 diff)
                     }
                 }
 
-                if (getPowerType() == POWER_ENERGY)
-                    Regenerate(POWER_ENERGY);
+                if (getPowerType() == POWER_ENERGY || getPowerType() == POWER_FOCUS)
+                    Regenerate(getPowerType());
                 else
                     Regenerate(POWER_MANA);
 
@@ -1009,7 +1010,7 @@ void Creature::Regenerate(Powers power)
         case POWER_FOCUS:
             {
                 // For hunter pets.
-                addvalue = 24 * sWorld->getRate(RATE_POWER_FOCUS);
+                addvalue = (IsPet() ? 24.0f : 12.0f) * sWorld->getRate(RATE_POWER_FOCUS);
                 break;
             }
         case POWER_ENERGY:
@@ -1046,7 +1047,8 @@ void Creature::Regenerate(Powers power)
     // Apply modifiers (if any).
     addvalue *= GetTotalAuraMultiplierByMiscValue(SPELL_AURA_MOD_POWER_REGEN_PERCENT, power);
 
-    addvalue += GetTotalAuraModifierByMiscValue(SPELL_AURA_MOD_POWER_REGEN, power) * (power == POWER_FOCUS ? PET_FOCUS_REGEN_INTERVAL.count() : CREATURE_REGEN_INTERVAL) / (5 * IN_MILLISECONDS);
+    uint32 regenInterval = power == POWER_FOCUS && IsPet() ? PET_FOCUS_REGEN_INTERVAL.count() : CREATURE_REGEN_INTERVAL;
+    addvalue += GetTotalAuraModifierByMiscValue(SPELL_AURA_MOD_POWER_REGEN, power) * regenInterval / (5 * IN_MILLISECONDS);
 
     ModifyPower(power, int32(addvalue));
 }
@@ -1572,6 +1574,17 @@ void Creature::SelectLevel(bool changelevel)
     sScriptMgr->OnCreatureSelectLevel(cInfo, this);
 }
 
+void Creature::RefreshLevelVariation()
+{
+    SetLevelVar(0);
+    if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreature(GetSpawnId()))
+        SetLevelVar(*levelVar);
+    else if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreatureTemplate(GetEntry()))
+        SetLevelVar(*levelVar);
+
+    ForceLevelScalingUpdate();
+}
+
 float Creature::_GetHealthMod(int32 Rank)
 {
     switch (Rank)                                           // define rates for each elite rank
@@ -1682,6 +1695,21 @@ bool Creature::CreateFromProto(ObjectGuid::LowType guidlow, uint32 Entry, uint32
 
     if (!UpdateEntry(Entry, data))
         return false;
+
+    // Determine the creature's target-relative level variation. Spawn-specific
+    // values take precedence over entry-wide values.
+    if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreature(GetSpawnId()))
+        SetLevelVar(*levelVar);
+    else if (int8 const* levelVar = sObjectMgr->GetLevelScaleCreatureTemplate(Entry))
+        SetLevelVar(*levelVar);
+
+    // If the creature has a level range, apply a random variation to the level variable.
+    if (CreatureTemplate const* creatureTemplate = GetCreatureTemplate(); creatureTemplate->maxlevel > creatureTemplate->minlevel)
+    {
+        int32 levelRange = creatureTemplate->maxlevel - creatureTemplate->minlevel;
+        int8 levelVar = GetLevelVar();
+        SetLevelVar(levelVar + int8(irand(-levelRange, levelRange)));
+    }
 
     return true;
 }
@@ -3207,15 +3235,11 @@ void Creature::AllLootRemovedFromCorpse()
 
 uint8 Creature::getLevelForTarget(WorldObject const* target) const
 {
-    if (!isWorldBoss() || !target->ToUnit())
-        return Unit::getLevelForTarget(target);
+    Unit const* unitTarget = target->ToUnit();
+    if (!unitTarget)
+        return GetLevel();
 
-    uint16 level = target->ToUnit()->GetLevel() + sWorld->getIntConfig(CONFIG_WORLD_BOSS_LEVEL_DIFF);
-    if (level < 1)
-        return 1;
-    if (level > 255)
-        return 255;
-    return uint8(level);
+    return sObjectMgr->GetLevelScaled(const_cast<Creature*>(this), const_cast<Unit*>(unitTarget));
 }
 
 std::string const& Creature::GetAIName() const

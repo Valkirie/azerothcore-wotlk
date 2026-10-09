@@ -21,6 +21,7 @@
 #include "TestMap.h"
 #include "TestPlayer.h"
 #include "TestCreature.h"
+#include "ObjectAccessor.h"
 #include "WorldMock.h"
 #include "WorldSession.h"
 #include "DBCStores.h"
@@ -74,6 +75,7 @@ protected:
         {
             if (player->IsInWorld())
                 player->RemoveFromWorld();
+            ObjectAccessor::RemoveObject(static_cast<Player*>(player));
         }
         _trackedPlayers.clear();
 
@@ -110,6 +112,7 @@ protected:
         player->SetSession(session);
         player->SetMap(_testMap);
         player->AddToWorld();
+        ObjectAccessor::AddObject(static_cast<Player*>(player));
         _trackedPlayers.push_back(player);
 
         return player;

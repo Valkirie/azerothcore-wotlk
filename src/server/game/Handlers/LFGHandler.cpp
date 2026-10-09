@@ -20,6 +20,7 @@
 #include "Group.h"
 #include "LFGMgr.h"
 #include "LFGPackets.h"
+#include "LootMgr.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
 #include "Player.h"
@@ -192,12 +193,12 @@ void WorldSession::HandleLfgPlayerLockInfoRequestOpcode(WorldPacket& /*recvData*
             uint8 playerLevelForXP = playerLevel;
             sScriptMgr->OnPlayerBeforeGetLevelForXPGain(GetPlayer(), playerLevelForXP);
 
+            uint32 questXp = playerLevelForXP < GetPlayer()->GetUInt32Value(PLAYER_FIELD_MAX_LEVEL) ? GetPlayer()->CalculateQuestRewardXP(quest) : 0;
+            uint8 rewardLevel = GetPlayer()->CalculateQuestRewardLevel(questXp);
+
             data << uint8(done);
-            data << uint32(quest->GetRewOrReqMoney(playerLevel));
-            if (playerLevelForXP < GetPlayer()->GetUInt32Value(PLAYER_FIELD_MAX_LEVEL))
-                data << uint32(quest->XPValue(playerLevelForXP));
-            else
-                data << uint32(0);
+            data << uint32(quest->GetRewOrReqMoney(rewardLevel));
+            data << questXp;
             data << uint32(0);
             data << uint32(0);
             data << uint8(quest->GetRewItemsCount());
@@ -206,6 +207,7 @@ void WorldSession::HandleLfgPlayerLockInfoRequestOpcode(WorldPacket& /*recvData*
                 for (uint8 i = 0; i < QUEST_REWARDS_COUNT; ++i)
                     if (uint32 itemId = quest->RewardItemId[i])
                     {
+                        itemId = LootStore::LoadScaledLoot(itemId, GetPlayer(), rewardLevel);
                         ItemTemplate const* item = sObjectMgr->GetItemTemplate(itemId);
                         data << uint32(itemId);
                         data << uint32(item ? item->DisplayInfoID : 0);
@@ -485,14 +487,16 @@ void WorldSession::SendLfgPlayerReward(lfg::LfgPlayerRewardData const& rewardDat
     uint8 playerLevel = GetPlayer() ? GetPlayer()->GetLevel() : 0;
     uint8 playerLevelForXP = playerLevel;
     sScriptMgr->OnPlayerBeforeGetLevelForXPGain(GetPlayer(), playerLevelForXP);
+    uint32 questXp = GetPlayer()->CalculateQuestRewardXP(rewardData.quest);
+    uint8 rewardLevel = GetPlayer()->CalculateQuestRewardLevel(questXp);
 
     WorldPacket data(SMSG_LFG_PLAYER_REWARD, 4 + 4 + 1 + 4 + 4 + 4 + 4 + 4 + 1 + itemNum * (4 + 4 + 4));
     data << uint32(rewardData.rdungeonEntry);              // Random Dungeon Finished
     data << uint32(rewardData.sdungeonEntry);              // Dungeon Finished
     data << uint8(rewardData.done);
     data << uint32(1);
-    data << uint32(rewardData.quest->GetRewOrReqMoney(playerLevel));
-    data << uint32(rewardData.quest->XPValue(playerLevelForXP));
+    data << uint32(rewardData.quest->GetRewOrReqMoney(rewardLevel));
+    data << questXp;
     data << uint32(0);
     data << uint32(0);
     data << uint8(itemNum);
@@ -501,6 +505,7 @@ void WorldSession::SendLfgPlayerReward(lfg::LfgPlayerRewardData const& rewardDat
         for (uint8 i = 0; i < QUEST_REWARDS_COUNT; ++i)
             if (uint32 itemId = rewardData.quest->RewardItemId[i])
             {
+                itemId = LootStore::LoadScaledLoot(itemId, GetPlayer(), rewardLevel);
                 ItemTemplate const* item = sObjectMgr->GetItemTemplate(itemId);
                 data << uint32(itemId);
                 data << uint32(item ? item->DisplayInfoID : 0);

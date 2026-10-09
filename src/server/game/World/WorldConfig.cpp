@@ -135,6 +135,14 @@ void WorldConfig::BuildConfigCache()
     SetConfigValue<float>(RATE_MOVESPEED_NPC, "Rate.MoveSpeed.NPC", 1.0f, ConfigValueCache::Reloadable::Yes, [](float const& value) { return value >= 0.0f; }, ">= 0");
 
     SetConfigValue<float>(RATE_CORPSE_DECAY_LOOTED, "Rate.Corpse.Decay.Looted", 0.5f);
+    SetConfigValue<float>(RATE_WEIGHT_ITEM_POOR, "Rate.Weight.Item.Poor", 1.0f);
+    SetConfigValue<float>(RATE_WEIGHT_ITEM_NORMAL, "Rate.Weight.Item.Normal", 1.0f);
+    SetConfigValue<float>(RATE_WEIGHT_ITEM_UNCOMMON, "Rate.Weight.Item.Uncommon", 1.0f);
+    SetConfigValue<float>(RATE_WEIGHT_ITEM_RARE, "Rate.Weight.Item.Rare", 1.0f);
+    SetConfigValue<float>(RATE_WEIGHT_ITEM_EPIC, "Rate.Weight.Item.Epic", 1.0f);
+    SetConfigValue<float>(RATE_WEIGHT_ITEM_LEGENDARY, "Rate.Weight.Item.Legendary", 1.0f);
+    SetConfigValue<float>(RATE_WEIGHT_ITEM_ARTIFACT, "Rate.Weight.Item.Artifact", 1.0f);
+    SetConfigValue<float>(RATE_WEIGHT_ITEM_HEIRLOOM, "Rate.Weight.Item.Heirloom", 1.0f);
 
     SetConfigValue<float>(RATE_DURABILITY_LOSS_ON_DEATH, "DurabilityLoss.OnDeath", 10.0f, ConfigValueCache::Reloadable::Yes, [](float const& value) { return value >= 0.0f && value <= 100.0f; }, ">= 0 && <= 100");
 
@@ -238,6 +246,11 @@ void WorldConfig::BuildConfigCache()
     SetConfigValue<uint32>(CONFIG_SKIP_CINEMATICS, "SkipCinematics", 0, ConfigValueCache::Reloadable::Yes, [](uint32 const& value) { return value <= 2; }, "<= 2");
 
     SetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL, "MaxPlayerLevel", DEFAULT_MAX_LEVEL, ConfigValueCache::Reloadable::No, [](uint32 const& value) { return value > 0 && value <= MAX_LEVEL; }, "> 0 && <= MAX_LEVEL");
+
+    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_APPRENTICE, "RidingLevelApprentive", 20, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
+    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_JOURNEYMAN, "RidingLevelJourneyman", 40, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
+    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_EXPERT, "RidingLevelExpert", 60, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
+    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_ARTISAN, "RidingLevelArtisan", 70, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
 
     SetConfigValue<uint32>(CONFIG_MIN_DUALSPEC_LEVEL, "MinDualSpecLevel", 40);
 
@@ -374,6 +387,14 @@ void WorldConfig::BuildConfigCache()
     SetConfigValue<uint32>(CONFIG_CREATURE_FAMILY_FLEE_DELAY, "CreatureFamilyFleeDelay", 7000);
 
     SetConfigValue<uint32>(CONFIG_WORLD_BOSS_LEVEL_DIFF, "WorldBossLevelDiff", 3);
+
+    SetConfigValue<bool>(CONFIG_BOOL_SCALE_PVP_HOSTILE, "Rochenoire.Scaling.PvP.Enemy", false);
+    SetConfigValue<bool>(CONFIG_BOOL_SCALE_PVP_FRIENDLY, "Rochenoire.Scaling.PvP.Friendly", false);
+    SetConfigValue<bool>(CONFIG_BOOL_SCALE_PVE_ITEMLEVEL, "Rochenoire.Scaling.PvE.Itemlevel", false);
+    SetConfigValue<bool>(CONFIG_BOOL_SMART_LOOT, "Rochenoire.SmartLoot.Enabled", false);
+    SetConfigValue<uint32>(CONFIG_INT32_SMART_LOOT_AMOUNT, "Rochenoire.SmartLoot.Amount", 4);
+    SetConfigValue<uint32>(CONFIG_GM_LEVEL_CHANNEL_MODERATION, "Channel.ModerationGMLevel", 1);
+    SetConfigValue<float>(RATE_SCALE_PVE_ITEMLEVEL, "Rate.Scaling.PvE.Itemlevel", 1.0f);
 
     SetConfigValue<bool>(CONFIG_QUEST_ENABLE_QUEST_TRACKER, "Quests.EnableQuestTracker", false);
 

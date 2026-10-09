@@ -35,6 +35,7 @@
 #include "LFG.h"
 #include "LFGMgr.h"
 #include "Language.h"
+#include "LootMgr.h"
 #include "MapMgr.h"
 #include "MiscPackets.h"
 #include "MovementGenerator.h"
@@ -632,6 +633,18 @@ public:
                                  object->GetPositionX(), object->GetPositionY(), object->GetPositionZ(), object->GetOrientation(),
                                  cell.GridX(), cell.GridY(), cell.CellX(), cell.CellY(), object->GetInstanceId(),
                                  zoneX, zoneY, groundZ, floorZ, haveMap, haveVMap, haveMMAP);
+
+        if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(areaId, zoneId))
+        {
+            handler->PSendSysMessage("Zone scaling: {} (ID: {}, matched by {}), level range: {}-{}, areaFlags: {} (0x{:08X}), low-level: {}",
+                zoneFlex->areaName, zoneFlex->areaId, zoneFlex->areaId == areaId ? "area" : "zone",
+                zoneFlex->LevelRangeMin, zoneFlex->LevelRangeMax, zoneFlex->areaFlags, zoneFlex->areaFlags,
+                zoneFlex->IsLowLevel() ? "yes" : "no");
+        }
+        else
+        {
+            handler->PSendSysMessage("Zone scaling: no configuration found");
+        }
 
         LiquidData const& liquidData = object->GetLiquidData();
 
@@ -1731,7 +1744,7 @@ public:
             handler->PSendSysMessage(LANG_REMOVEITEM_NONE_LEFT, itemId, removed, nameLink, guidLow, status);
     }
 
-    static bool HandleAddItemCommand(ChatHandler* handler, Optional<PlayerIdentifier> player, ItemTemplate const* itemTemplate, Optional<int32> _count)
+    static bool HandleAddItemCommand(ChatHandler* handler, Optional<PlayerIdentifier> player, ItemTemplate const* itemTemplate, Optional<int32> _count, Optional<uint32> level)
     {
         if (!sObjectMgr->GetItemTemplate(itemTemplate->ItemId))
         {
@@ -1886,6 +1899,9 @@ public:
             handler->SendErrorMessage(LANG_PLAYER_NOT_FOUND);
             return false;
         }
+
+        if (level)
+            itemId = LootStore::LoadScaledLoot(sObjectMgr->GetItemParentEntry(itemId), playerTarget, *level);
 
         // Adding items
         uint32 noSpaceForCount = 0;

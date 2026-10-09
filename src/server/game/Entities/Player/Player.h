@@ -1488,6 +1488,7 @@ public:
     bool GiveQuestSourceItem(Quest const* quest);
     bool TakeQuestSourceItem(uint32 questId, bool msg);
     uint32 CalculateQuestRewardXP(Quest const* quest);
+    [[nodiscard]] uint8 CalculateQuestRewardLevel(uint32 xp) const;
     [[nodiscard]] bool GetQuestRewardStatus(uint32 quest_id) const;
     [[nodiscard]] QuestStatus GetQuestStatus(uint32 quest_id) const;
     void SetQuestStatus(uint32 questId, QuestStatus status, bool update = true);
@@ -1561,7 +1562,7 @@ public:
     [[nodiscard]] bool CanShareQuest(uint32 quest_id) const;
 
     void SendQuestComplete(uint32 quest_id);
-    void SendQuestReward(Quest const* quest, uint32 XP);
+    void SendQuestReward(Quest const* quest, uint32 XP, bool rewardWithMoney);
     void SendQuestFailed(uint32 questId, InventoryResult reason = EQUIP_ERR_OK);
     void SendQuestTimerFailed(uint32 quest_id);
     void SendCanTakeQuestResponse(QuestFailedReason msg) const;
@@ -2287,6 +2288,7 @@ public:
     std::vector<ItemSetEffect*> ItemSetEff;
 
     void SendLoot(ObjectGuid guid, LootType loot_type);
+    void GetScaledLootForPlayer(Loot* loot);
     void SendLootError(ObjectGuid guid, LootError error);
     void SendLootRelease(ObjectGuid guid);
     void SendNotifyLootItemRemoved(uint8 lootSlot);
@@ -2463,6 +2465,9 @@ public:
     void SetTemporaryUnsummonedPetNumber(uint32 petnumber) { m_temporaryUnsummonedPetNumber = petnumber; }
     void UnsummonPetTemporaryIfAny();
     void ResummonPetTemporaryUnSummonedIfAny();
+    void SetPendingPetProxyState(uint32 petNumber, uint32 health, uint32 focus, Position const& position,
+        ThreatManager::Snapshot&& threat, CreatureSpellCooldowns&& cooldowns);
+    void ApplyPendingPetProxyState(Pet* pet);
     [[nodiscard]] bool IsPetNeedBeTemporaryUnsummoned() const { return GetSession()->PlayerLogout() || !IsInWorld() || !IsAlive() || IsMounted()/*+in flight*/ || GetVehicle() || IsBeingTeleported(); }
     bool CanResummonPet(uint32 spellid);
 
@@ -2608,6 +2613,14 @@ public:
     float GetAverageItemLevel();
     [[nodiscard]] float GetTotalItemLevel() const;
     float GetAverageItemLevelForDF();
+    // Calculates the player's effective item level for Rochenoire scaling and smart loot.
+    [[nodiscard]] uint32 GetItemLevel() const;
+    // Determines whether an item contributes to the effective item-level calculation.
+    [[nodiscard]] bool IsRelevant(Item const* item) const;
+    // Returns the weighted quantity of relevant items of the requested quality.
+    [[nodiscard]] float countRelevant(uint32 quality, bool inventory) const;
+    // Returns the quality-aware coefficient used by the smart-loot calculation.
+    [[nodiscard]] float GetItemLevelCoeff(uint32 quality) const;
     bool isDebugAreaTriggers;
 
     void ClearWhisperWhiteList() { WhisperList.clear(); }
@@ -3046,6 +3059,16 @@ private:
     // Temporary removed pet cache
     uint32 m_temporaryUnsummonedPetNumber;
     uint32 m_oldpetspell;
+    struct PendingPetProxyState
+    {
+        uint32 PetNumber;
+        uint32 Health;
+        uint32 Focus;
+        Position PetPosition;
+        ThreatManager::Snapshot Threat;
+        CreatureSpellCooldowns Cooldowns;
+    };
+    std::optional<PendingPetProxyState> m_pendingPetProxyState;
 
     AchievementMgr* m_achievementMgr;
     ReputationMgr*  m_reputationMgr;
