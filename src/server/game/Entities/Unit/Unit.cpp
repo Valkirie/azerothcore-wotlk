@@ -133,25 +133,6 @@ uint8 Unit::getAreaZoneLevel(uint32 AreaID, uint32 ZoneID) const
     return level;
 }
 
-// Check whether the unit is inside a configured area/zone scaling range.
-bool Unit::hasAreaZoneLevel(uint32 AreaID, uint32 ZoneID) const
-{
-    uint32 area = AreaID != 0 ? AreaID : GetMap() ? GetAreaId() : 0;
-    uint32 zone = ZoneID != 0 ? ZoneID : GetMap() ? GetZoneId() : 0;
-    uint32 level = GetLevel();
-
-    if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(area, zone))
-    {
-        if (zoneFlex->IsScalingDisabled())
-            return false;
-
-        if (level < zoneFlex->LevelRangeMin || level > zoneFlex->LevelRangeMax)
-            return false;
-    }
-
-    return true;
-}
-
 DamageInfo::DamageInfo(CalcDamageInfo const& dmgInfo) : DamageInfo(DamageInfo(dmgInfo, 0), DamageInfo(dmgInfo, 1))
 {
 }

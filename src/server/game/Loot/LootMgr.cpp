@@ -77,14 +77,12 @@ void LoadRochenoireSmartLootTable(char const* tableName)
 
 uint32 LootStore::LoadScaledLoot(uint32 itemId, Player* player, uint32 forcedLevel)
 {
-    if (!player || !player->hasAreaZoneLevel())
+    if (!player)
         return itemId;
 
     uint32 playerLevel = forcedLevel ? forcedLevel : player->getAreaZoneLevel();
-    if (forcedLevel)
-        if (ZoneFlex const* location = sObjectMgr->GetAreaZoneFlex(player->GetAreaId(), player->GetZoneId()))
-            if (forcedLevel < location->LevelRangeMin || forcedLevel > location->LevelRangeMax)
-                return itemId;
+    if (ZoneFlex const* location = sObjectMgr->GetAreaZoneFlex(player->GetAreaId(), player->GetZoneId()))
+        playerLevel = std::clamp(playerLevel, uint32(location->LevelRangeMin), uint32(location->LevelRangeMax));
 
     playerLevel = std::min(playerLevel, uint32(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
@@ -109,6 +107,7 @@ uint32 LootStore::LoadScaledLoot(uint32 itemId, Player* player, uint32 forcedLev
 
     return itemId;
 }
+
 LootStore LootTemplates_Pickpocketing("pickpocketing_loot_template", "creature pickpocket lootid",      true);
 LootStore LootTemplates_Prospecting("prospecting_loot_template",     "item entry (ore)",                true);
 LootStore LootTemplates_Reference("reference_loot_template",         "reference id",                    false);

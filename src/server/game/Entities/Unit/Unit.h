@@ -1167,8 +1167,6 @@ public:
     void ModifyLevelVar(int8 var) { level_var += var; }
     // Returns the configured level range for the unit's current or supplied area/zone.
     [[nodiscard]] uint8 getAreaZoneLevel(uint32 AreaID = 0, uint32 ZoneID = 0) const;
-    // Indicates whether a configured scaling range applies to the unit's area/zone.
-    [[nodiscard]] bool hasAreaZoneLevel(uint32 AreaID = 0, uint32 ZoneID = 0) const;
 
     // Health methods
     [[nodiscard]] uint32 GetHealth()    const { return GetUInt32Value(UNIT_FIELD_HEALTH); }
