@@ -30,7 +30,7 @@ INSERT INTO `npc_text_locale` (`ID`, `Locale`, `Text0_0`) VALUES
 (600001, 'frFR', 'Choisissez le niveau souhaité. Les meilleures marchandises coûtent davantage de Marques de contrebande.'),
 (600002, 'frFR', 'Voici ce que je peux faire pour vous. Cela peut me prendre du temps de le trouver selon sa rareté.$B$BQu\'en pensez-vous ? Marché conclu ?');
 
-DELETE FROM `acore_string` WHERE `entry` IN (11039, 11040, 11041, 11042, 11043, 11044, 11045, 11046, 11047, 11050, 11051, 11052, 11053, 11054, 11055, 11056, 11057, 11058, 11059, 11060, 11061, 11062, 11063, 11064, 11065, 11066, 11067, 11068, 11069, 11070, 11100, 11101, 11102);
+DELETE FROM `acore_string` WHERE `entry` IN (11039, 11040, 11041, 11042, 11043, 11044, 11045, 11046, 11047, 11050, 11051, 11052, 11053, 11054, 11055, 11056, 11057, 11058, 11059, 11060, 11061, 11062, 11063, 11064, 11065, 11066, 11067, 11068, 11069, 11070, 11100, 11101, 11102, 11103, 11104, 11105, 11106, 11107, 11108, 11109, 11110);
 INSERT INTO `acore_string` (`entry`, `content_default`, `locale_frFR`) VALUES
 (11039, 'Black Market Delivery', 'Livraison du marché noir'),
 (11040, 'This package contains {} and is meant to be delivered to {} only. If you are not the original receiver, please return it to the closest Black Market representative.', 'Ce paquet contient {} et est destiné à être livré à {}. Si vous n\'êtes pas le destinataire original, veuillez le retourner au représentant du marché noir le plus proche.'),
@@ -64,7 +64,15 @@ INSERT INTO `acore_string` (`entry`, `content_default`, `locale_frFR`) VALUES
 (11070, 'Weapon, Fishing Pole', 'Armes, Cannes à pêche'),
 (11100, 'Yes. (cost: {} Contraband Marks).', 'Oui. (coût : {} Marques de contrebande).'),
 (11101, 'No.', 'Non.'),
-(11102, 'Your item will be replaced by {}.', 'Votre objet sera remplacé par {}.');
+(11102, 'Your item will be replaced by {}.', 'Votre objet sera remplacé par {}.'),
+(11103, 'Look at this beauty: {}. A bargain like this won\'t wait forever!', 'Regardez-moi cette merveille : {}. Une affaire pareille ne vous attendra pas éternellement !'),
+(11104, 'Between you and me, {} is exactly the kind of deal that makes fortunes.', 'Entre nous, {} est exactement le genre d\'affaire qui fait fortune.'),
+(11105, 'Don\'t let somebody else walk away with {}. You\'d regret it!', 'Ne laissez pas quelqu\'un d\'autre repartir avec {}. Vous le regretteriez !'),
+(11106, 'Trust me, {} is worth every Contraband Mark. Probably.', 'Faites-moi confiance, {} vaut chaque Marque de contrebande. Enfin... probablement.'),
+(11107, 'One little upgrade, one big improvement: {}. What could possibly go wrong?', 'Une petite amélioration, un grand changement : {}. Qu\'est-ce qui pourrait mal tourner ?'),
+(11108, 'Take {} now, and you can pretend you earned it.', 'Prenez {} maintenant, et vous pourrez faire semblant de l\'avoir mérité.'),
+(11109, 'Rare, desirable, and just shady enough: {}. That\'s the Black Market guarantee!', 'Rare, convoité et juste assez louche : {}. C\'est la garantie du marché noir !'),
+(11110, 'Best deal in Azeroth, friend: {}. Say yes before I change my mind!', 'La meilleure affaire d\'Azeroth, mon ami : {}. Dites oui avant que je ne change d\'avis !');
 
 DELETE FROM `creature_text` WHERE `CreatureID` = 500000;
 INSERT INTO `creature_text` (`CreatureID`, `GroupID`, `ID`, `Text`, `Type`, `Language`, `Probability`, `Emote`, `Duration`, `Sound`, `BroadcastTextId`, `TextRange`, `comment`) VALUES

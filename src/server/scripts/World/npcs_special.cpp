@@ -1982,6 +1982,8 @@ enum BlackMarket
     BLACK_MARKET_CONFIRM_YES = 11100,
     BLACK_MARKET_CONFIRM_NO = 11101,
     BLACK_MARKET_CONFIRM_DETAILS = 11102,
+    BLACK_MARKET_CONFIRM_WHISPER_FIRST = 11103,
+    BLACK_MARKET_CONFIRM_WHISPER_LAST = 11110,
     BLACK_MARKET_MAIL_DELAY = 30,
     BLACK_MARKET_MAILBOX_POINT = 1
 };
@@ -2018,6 +2020,8 @@ public:
         std::vector<ObjectGuid> Items;
         ObjectGuid SelectedItem;
         std::vector<uint32> ScaledItems;
+        std::vector<int32> ScaledRandomProperties;
+        std::vector<uint32> ScaledSuffixFactors;
         uint32 SelectedScaledItem = 0;
         bool HasSelectedScaledItem = false;
     };
@@ -2169,6 +2173,24 @@ public:
         return name;
     }
 
+    static std::string GetItemLink(Player* player, ItemTemplate const* itemTemplate, int32 randomPropertyId, uint32 suffixFactor)
+    {
+        return Acore::StringFormat("|c{:08x}|Hitem:{}:0:0:0:0:0:{}:{}:0|h[{}]|h|r",
+            ItemQualityColors[itemTemplate->Quality], itemTemplate->ItemId, randomPropertyId, suffixFactor, GetItemName(player, itemTemplate));
+    }
+
+    static int32 GetScaledRandomPropertyId(Item const* sourceItem, uint32 scaledItemId)
+    {
+        int32 randomPropertyId = sourceItem->GetItemRandomPropertyId();
+        if (!randomPropertyId)
+            return 0;
+
+        uint32 propertyFamily = 0;
+        uint32 suffixFamily = 0;
+        GetItemEnchantFamilies(std::abs(randomPropertyId), propertyFamily, suffixFamily);
+        return Item::GenerateItemRandomPropertyIdForFamily(scaledItemId, propertyFamily, suffixFamily);
+    }
+
     static bool IsEligibleItem(Player* player, Item* item)
     {
         if (!item || item->IsInTrade() || item->GetCount() != 1)
@@ -2179,6 +2201,17 @@ public:
             itemTemplate->RequiredLevel >= 10 && itemTemplate->RequiredLevel < player->GetLevel();
     }
 
+    static uint32 GetItemGossipIcon(ItemTemplate const* itemTemplate)
+    {
+        if (itemTemplate->Class == ITEM_CLASS_WEAPON)
+            return GOSSIP_ICON_BATTLE;
+
+        if (itemTemplate->Class == ITEM_CLASS_ARMOR)
+            return GOSSIP_ICON_TABARD;
+
+        return GOSSIP_ICON_CHAT;
+    }
+
     static void AddEligibleItem(Player* player, Item* item, PlayerSelection& selection)
     {
         if (!IsEligibleItem(player, item))
@@ -2187,7 +2220,7 @@ public:
         selection.Items.push_back(item->GetGUID());
         ItemTemplate const* itemTemplate = item->GetTemplate();
         std::string label = GetItemName(player, itemTemplate) + " [" + std::to_string(itemTemplate->RequiredLevel) + "]";
-        AddGossipItemFor(player, GOSSIP_ICON_CHAT, label, GOSSIP_SENDER_MAIN, BLACK_MARKET_ITEM_ACTION + selection.Items.size() - 1);
+        AddGossipItemFor(player, GetItemGossipIcon(itemTemplate), label, GOSSIP_SENDER_MAIN, BLACK_MARKET_ITEM_ACTION + selection.Items.size() - 1);
     }
 
     bool OnGossipHello(Player* player, Creature* creature) override
@@ -2252,6 +2285,8 @@ public:
 
             selection.SelectedItem = item->GetGUID();
             selection.ScaledItems.clear();
+            selection.ScaledRandomProperties.clear();
+            selection.ScaledSuffixFactors.clear();
             selection.HasSelectedScaledItem = false;
 
             ItemTemplate const* itemTemplate = item->GetTemplate();
@@ -2259,17 +2294,29 @@ public:
             uint32 minimumLevel = std::max<uint32>(itemTemplate->RequiredLevel + 1, player->GetLevel() > 10 ? player->GetLevel() - 9 : 1);
             for (uint32 level = minimumLevel; level <= player->GetLevel(); ++level)
             {
-                uint32 scaledItemId = LootStore::LoadScaledLoot(parentItemId, player, level);
+                uint32 scaledItemId = LootStore::LoadScaledLootAtLevel(parentItemId, player, level);
                 ItemTemplate const* scaledTemplate = sObjectMgr->GetItemTemplate(scaledItemId);
                 if (!scaledTemplate || scaledItemId == item->GetEntry())
                     continue;
 
+                int32 scaledRandomPropertyId = GetScaledRandomPropertyId(item, scaledItemId);
+                Item* previewItem = Item::CreateItem(scaledItemId, 1, player);
+                if (!previewItem)
+                    continue;
+
+                if (scaledRandomPropertyId)
+                    previewItem->SetItemRandomProperties(scaledRandomPropertyId);
+
                 selection.ScaledItems.push_back(scaledItemId);
+                selection.ScaledRandomProperties.push_back(previewItem->GetItemRandomPropertyId());
+                selection.ScaledSuffixFactors.push_back(previewItem->GetItemSuffixFactor());
+                delete previewItem;
+
                 uint32 cost = GetTokenCost(itemTemplate, scaledTemplate);
                 ItemTemplate const* currencyTemplate = sObjectMgr->GetItemTemplate(BLACK_MARKET_TOKEN);
                 std::string currencyName = currencyTemplate ? GetItemName(player, currencyTemplate) : "Contraband Mark";
                 std::string label = GetItemName(player, scaledTemplate) + " [" + std::to_string(level) + "] - " + std::to_string(cost) + " " + currencyName;
-                AddGossipItemFor(player, GOSSIP_ICON_CHAT, label, GOSSIP_SENDER_MAIN, BLACK_MARKET_SCALE_ACTION + selection.ScaledItems.size() - 1);
+                AddGossipItemFor(player, GetItemGossipIcon(scaledTemplate), label, GOSSIP_SENDER_MAIN, BLACK_MARKET_SCALE_ACTION + selection.ScaledItems.size() - 1);
             }
 
             SendGossipMenuFor(player, BLACK_MARKET_TEXT_LEVELS, creature);
@@ -2280,7 +2327,8 @@ public:
         {
             uint32 scaledItemIndex = action - BLACK_MARKET_SCALE_ACTION;
             Item* sourceItem = player->GetItemByGuid(selection.SelectedItem);
-            if (scaledItemIndex >= selection.ScaledItems.size() || !IsEligibleItem(player, sourceItem))
+            if (scaledItemIndex >= selection.ScaledItems.size() || scaledItemIndex >= selection.ScaledRandomProperties.size() ||
+                scaledItemIndex >= selection.ScaledSuffixFactors.size() || !IsEligibleItem(player, sourceItem))
             {
                 blackMarketAI->Selections.erase(selectionItr);
                 CloseGossipMenuFor(player);
@@ -2300,6 +2348,9 @@ public:
 
             uint32 cost = GetTokenCost(sourceItem->GetTemplate(), scaledTemplate);
             std::string details = Acore::StringFormat(player->GetSession()->GetAcoreString(BLACK_MARKET_CONFIRM_DETAILS), GetItemName(player, scaledTemplate));
+            std::string chatDetails = Acore::StringFormat(player->GetSession()->GetAcoreString(urand(BLACK_MARKET_CONFIRM_WHISPER_FIRST, BLACK_MARKET_CONFIRM_WHISPER_LAST)),
+                GetItemLink(player, scaledTemplate, selection.ScaledRandomProperties[scaledItemIndex], selection.ScaledSuffixFactors[scaledItemIndex]));
+            creature->Whisper(chatDetails, LANG_UNIVERSAL, player);
             std::string confirm = Acore::StringFormat(player->GetSession()->GetAcoreString(BLACK_MARKET_CONFIRM_YES), cost);
             AddGossipItemFor(player, GOSSIP_ICON_CHAT, details + "\n" + confirm, GOSSIP_SENDER_MAIN, BLACK_MARKET_CONFIRM_ACTION);
             AddGossipItemFor(player, GOSSIP_ICON_CHAT, player->GetSession()->GetAcoreString(BLACK_MARKET_CONFIRM_NO), GOSSIP_SENDER_MAIN, BLACK_MARKET_CANCEL_ACTION);
@@ -2349,7 +2400,10 @@ private:
 
         uint32 scaledItemId = selection.ScaledItems[scaledItemIndex];
         ItemTemplate const* scaledTemplate = sObjectMgr->GetItemTemplate(scaledItemId);
-        if (!scaledTemplate || LootStore::LoadScaledLoot(sObjectMgr->GetItemParentEntry(sourceItem->GetEntry()), player, scaledTemplate->RequiredLevel) != scaledItemId)
+        if (!scaledTemplate || LootStore::LoadScaledLootAtLevel(sObjectMgr->GetItemParentEntry(sourceItem->GetEntry()), player, scaledTemplate->RequiredLevel) != scaledItemId)
+            return false;
+
+        if (scaledItemIndex >= selection.ScaledRandomProperties.size() || scaledItemIndex >= selection.ScaledSuffixFactors.size())
             return false;
 
         uint32 cost = GetTokenCost(sourceItem->GetTemplate(), scaledTemplate);
@@ -2363,20 +2417,17 @@ private:
         if (!scaledItem)
             return false;
 
-        int32 randomPropertyId = sourceItem->GetItemRandomPropertyId();
-        if (randomPropertyId)
+        int32 randomPropertyId = selection.ScaledRandomProperties[scaledItemIndex];
+        if (sourceItem->GetItemRandomPropertyId())
         {
-            uint32 propertyFamily = 0;
-            uint32 suffixFamily = 0;
-            GetItemEnchantFamilies(std::abs(randomPropertyId), propertyFamily, suffixFamily);
-            int32 scaledRandomPropertyId = Item::GenerateItemRandomPropertyIdForFamily(scaledItemId, propertyFamily, suffixFamily);
-            if (!scaledRandomPropertyId)
+            if (!randomPropertyId)
             {
                 delete scaledItem;
                 return false;
             }
 
-            scaledItem->SetItemRandomProperties(scaledRandomPropertyId);
+            scaledItem->SetItemRandomProperties(randomPropertyId);
+            scaledItem->SetUInt32Value(ITEM_FIELD_PROPERTY_SEED, selection.ScaledSuffixFactors[scaledItemIndex]);
         }
         for (uint8 slot = 0; slot < MAX_INSPECTED_ENCHANTMENT_SLOT; ++slot)
         {

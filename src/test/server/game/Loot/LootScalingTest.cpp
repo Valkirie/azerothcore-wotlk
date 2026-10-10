@@ -272,6 +272,23 @@ TEST_F(LootScalingTest, ForcedLevelIsClampedToAreaBounds)
 		sObjectMgr->RemoveZoneFlexForTest(0);
 }
 
+TEST_F(LootScalingTest, ExplicitLevelBypassesAreaBounds)
+{
+	std::optional<ZoneFlex> originalLocation;
+	if (ZoneFlex const* location = sObjectMgr->GetZoneFlexForTest(0))
+		originalLocation = *location;
+
+	sObjectMgr->SetZoneFlexForTest({ "Scalable", 0, 0, 10, LowLevel, 0 });
+	TestPlayer* player = CreatePlayer(1, HighLevel);
+
+	EXPECT_EQ(LootStore::LoadScaledLootAtLevel(PlainItemId, player, HighLevel), ScaledItemId(PlainItemId, HighLevel));
+
+	if (originalLocation)
+		sObjectMgr->SetZoneFlexForTest(*originalLocation);
+	else
+		sObjectMgr->RemoveZoneFlexForTest(0);
+}
+
 TEST_F(LootScalingTest, SoloRandomPropertyScalesWithinGeneratedFamily)
 {
 	TestPlayer* player = CreatePlayer(1, LowLevel);

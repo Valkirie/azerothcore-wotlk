@@ -75,14 +75,12 @@ void LoadRochenoireSmartLootTable(char const* tableName)
     LOG_INFO("server.loading", ">> Loaded {} smart-loot values for {} in {} ms", count, tableName, GetMSTimeDiffToNow(oldMSTime));
 }
 
-uint32 LootStore::LoadScaledLoot(uint32 itemId, Player* player, uint32 forcedLevel)
+namespace
+{
+uint32 LoadScaledLootForLevel(uint32 itemId, Player* player, uint32 playerLevel)
 {
     if (!player)
         return itemId;
-
-    uint32 playerLevel = forcedLevel ? forcedLevel : player->getAreaZoneLevel();
-    if (ZoneFlex const* location = sObjectMgr->GetAreaZoneFlex(player->GetAreaId(), player->GetZoneId()))
-        playerLevel = std::clamp(playerLevel, uint32(location->LevelRangeMin), uint32(location->LevelRangeMax));
 
     playerLevel = std::min(playerLevel, uint32(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
@@ -106,6 +104,24 @@ uint32 LootStore::LoadScaledLoot(uint32 itemId, Player* player, uint32 forcedLev
     }
 
     return itemId;
+}
+}
+
+uint32 LootStore::LoadScaledLoot(uint32 itemId, Player* player, uint32 forcedLevel)
+{
+    if (!player)
+        return itemId;
+
+    uint32 playerLevel = forcedLevel ? forcedLevel : player->getAreaZoneLevel();
+    if (ZoneFlex const* location = sObjectMgr->GetAreaZoneFlex(player->GetAreaId(), player->GetZoneId()))
+        playerLevel = std::clamp(playerLevel, uint32(location->LevelRangeMin), uint32(location->LevelRangeMax));
+
+    return LoadScaledLootForLevel(itemId, player, playerLevel);
+}
+
+uint32 LootStore::LoadScaledLootAtLevel(uint32 itemId, Player* player, uint32 level)
+{
+    return LoadScaledLootForLevel(itemId, player, level);
 }
 
 LootStore LootTemplates_Pickpocketing("pickpocketing_loot_template", "creature pickpocket lootid",      true);
