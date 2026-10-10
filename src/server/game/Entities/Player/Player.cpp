@@ -82,7 +82,6 @@
 #include "Tokenize.h"
 #include "Trainer.h"
 #include "Transport.h"
-#include "TypeContainerVisitor.h"
 #include "Unit.h"
 #include "UpdateData.h"
 #include "Util.h"
@@ -97,20 +96,6 @@
 #include "WorldStatePackets.h"
 #include <cmath>
 #include <queue>
-
-class LevelScalingUpdateWorker
-{
-public:
-    void Visit(std::unordered_map<ObjectGuid, Creature*>& creatureMap)
-    {
-        for (auto const& pair : creatureMap)
-            if (pair.second && pair.second->IsInWorld())
-                pair.second->ForceLevelScalingUpdate();
-    }
-
-    template<class T>
-    void Visit(std::unordered_map<ObjectGuid, T*>&) { }
-};
 
 /// @todo: this import is not necessary for compilation and marked as unused by the IDE
 //  however, for some reasons removing it would cause a damn linking issue
@@ -2572,13 +2557,6 @@ void Player::GiveLevel(uint8 level)
     // update level to hunter/summon pet
     if (Pet* pet = GetPet())
         pet->SynchronizeLevelWithOwner();
-
-    if (IsInWorld())
-    {
-        LevelScalingUpdateWorker worker;
-        TypeContainerVisitor<LevelScalingUpdateWorker, MapStoredObjectTypesContainer> visitor(worker);
-        visitor.Visit(GetMap()->GetObjectsStore());
-    }
 
     MailLevelReward const* mailReward = sObjectMgr->GetMailLevelReward(level, getRaceMask());
     if (mailReward && sScriptMgr->OnPlayerCanGiveMailRewardAtGiveLevel(this, level))
