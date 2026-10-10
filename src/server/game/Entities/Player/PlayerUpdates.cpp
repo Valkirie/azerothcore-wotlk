@@ -1275,6 +1275,35 @@ void Player::UpdateArea(uint32 newArea)
         SetRestFlag(REST_FLAG_IN_FACTION_AREA);
     else
         RemoveRestFlag(REST_FLAG_IN_FACTION_AREA);
+
+    std::string addonMessage = "RZScale";
+    addonMessage.push_back('\t');
+    if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(newArea, m_zoneUpdateId); zoneFlex && !zoneFlex->IsLowLevel())
+    {
+        std::string areaName = zoneFlex->areaName;
+        if (area)
+            if (char const* localizedName = area->area_name[GetSession()->GetSessionDbcLocale()])
+                if (*localizedName)
+                    areaName = localizedName;
+
+        addonMessage += "v1:" + std::to_string(m_zoneUpdateId) + ":" + std::to_string(newArea) + ":" +
+            std::to_string(zoneFlex->areaId) + ":" + std::to_string(zoneFlex->LevelRangeMin) + ":" +
+            std::to_string(zoneFlex->LevelRangeMax) + ":" + std::to_string(zoneFlex->areaFlags) + ":" +
+            std::to_string(GetLevel()) + ":" + (zoneFlex->areaId == newArea ? "area" : "zone") + ":" + areaName;
+    }
+    else
+        addonMessage += "v1:clear";
+
+    WorldPacket addonPacket(SMSG_MESSAGECHAT, 1 + 4 + 8 + 4 + 8 + 4 + addonMessage.size() + 2);
+    addonPacket << uint8(CHAT_MSG_WHISPER);
+    addonPacket << uint32(LANG_ADDON);
+    addonPacket << uint64(0);
+    addonPacket << uint32(0);
+    addonPacket << uint64(0);
+    addonPacket << uint32(addonMessage.size() + 1);
+    addonPacket << addonMessage;
+    addonPacket << uint8(0);
+    SendDirectMessage(&addonPacket);
 }
 
 void Player::UpdateZone(uint32 newZone, uint32 newArea, bool force)
@@ -1299,10 +1328,8 @@ void Player::UpdateZone(uint32 newZone, uint32 newArea, bool force)
         if (Guild* guild = GetGuild())
             guild->UpdateMemberData(this, GUILD_MEMBER_DATA_ZONEID, newZone);
 
-        // Notify the player of the configured level range when entering a scalable zone.
-        if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(newArea, newZone))
-            if (!zoneFlex->IsLowLevel())
-                ChatHandler(GetSession()).PSendSysMessage(LANG_ZONE_LEVEL_SCALING_RANGE, zoneFlex->LevelRangeMin, zoneFlex->LevelRangeMax);
+        if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(newArea, newZone); zoneFlex && !zoneFlex->IsLowLevel())
+            ChatHandler(GetSession()).PSendSysMessage(LANG_ZONE_LEVEL_SCALING_RANGE, zoneFlex->LevelRangeMin, zoneFlex->LevelRangeMax);
     }
 
     GetMap()->UpdatePlayerZoneStats(m_zoneUpdateId, newZone);
