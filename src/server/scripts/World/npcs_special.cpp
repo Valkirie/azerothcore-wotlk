@@ -2310,7 +2310,7 @@ public:
                 selection.ScaledItems.push_back(scaledItemId);
                 selection.ScaledRandomProperties.push_back(previewItem->GetItemRandomPropertyId());
                 selection.ScaledSuffixFactors.push_back(previewItem->GetItemSuffixFactor());
-                delete previewItem;
+                previewItem->SetState(ITEM_REMOVED, player);
 
                 uint32 cost = GetTokenCost(itemTemplate, scaledTemplate);
                 ItemTemplate const* currencyTemplate = sObjectMgr->GetItemTemplate(BLACK_MARKET_TOKEN);
