@@ -10903,6 +10903,26 @@ inline bool Player::_StoreOrEquipNewItem(uint32 vendorslot, uint32 item, uint8 c
     return true;
 }
 
+uint32 Player::GetVendorItemBuyPrice(ItemTemplate const* itemTemplate) const
+{
+    if (itemTemplate->RequiredSkill != SKILL_RIDING)
+        return itemTemplate->BuyPrice > 0 ? uint32(itemTemplate->BuyPrice) : 0;
+
+    switch (itemTemplate->RequiredSkillRank)
+    {
+        case 75:
+            return sWorld->getIntConfig(CONFIG_APPRENTICE_MOUNT_COST);
+        case 150:
+            return sWorld->getIntConfig(CONFIG_JOURNEYMAN_MOUNT_COST);
+        case 225:
+            return sWorld->getIntConfig(CONFIG_EXPERT_MOUNT_COST);
+        case 300:
+            return sWorld->getIntConfig(CONFIG_ARTISAN_MOUNT_COST);
+        default:
+            return itemTemplate->BuyPrice > 0 ? uint32(itemTemplate->BuyPrice) : 0;
+    }
+}
+
 // Return true is the bought item has a max count to force refresh of window by caller
 bool Player::BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uint32 item, uint8 count, uint8 bag, uint8 slot)
 {
@@ -11044,15 +11064,16 @@ bool Player::BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uin
     }
 
     uint32 price = 0;
-    if (crItem->IsGoldRequired(pProto) && pProto->BuyPrice > 0) //Assume price cannot be negative (do not know why it is int32)
+    uint32 unitPrice = GetVendorItemBuyPrice(pProto);
+    if (crItem->IsGoldRequired(pProto) && unitPrice > 0)
     {
-        uint32 maxCount = MAX_MONEY_AMOUNT / pProto->BuyPrice;
+        uint32 maxCount = MAX_MONEY_AMOUNT / unitPrice;
         if ((uint32)count > maxCount)
         {
             LOG_ERROR("entities.player", "Player {} tried to buy {} item id {}, causing overflow", GetName(), (uint32)count, pProto->ItemId);
             count = (uint8)maxCount;
         }
-        price = pProto->BuyPrice * count; //it should not exceed MAX_MONEY_AMOUNT
+        price = unitPrice * count;
 
         // reputation discount
         price = uint32(std::floor(price * GetReputationPriceDiscount(creature)));

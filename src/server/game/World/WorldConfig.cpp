@@ -247,10 +247,18 @@ void WorldConfig::BuildConfigCache()
 
     SetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL, "MaxPlayerLevel", DEFAULT_MAX_LEVEL, ConfigValueCache::Reloadable::No, [](uint32 const& value) { return value > 0 && value <= MAX_LEVEL; }, "> 0 && <= MAX_LEVEL");
 
-    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_APPRENTICE, "RidingLevelApprentive", 20, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
-    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_JOURNEYMAN, "RidingLevelJourneyman", 40, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
-    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_EXPERT, "RidingLevelExpert", 60, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
-    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_ARTISAN, "RidingLevelArtisan", 70, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
+    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_APPRENTICE, "Mount.Apprentice.Level", 20, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
+    SetConfigValue<uint32>(CONFIG_APPRENTICE_MOUNT_COST, "Mount.Apprentice.Cost", 10000, ConfigValueCache::Reloadable::Yes, [](uint32 const& value) { return value <= MAX_MONEY_AMOUNT; }, "<= MAX_MONEY_AMOUNT");
+    SetConfigValue<uint32>(CONFIG_APPRENTICE_TRAIN_COST, "Mount.Apprentice.Training.Cost", 40000, ConfigValueCache::Reloadable::No, [](uint32 const& value) { return value <= MAX_MONEY_AMOUNT; }, "<= MAX_MONEY_AMOUNT");
+    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_JOURNEYMAN, "Mount.Journeyman.Level", 40, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
+    SetConfigValue<uint32>(CONFIG_JOURNEYMAN_MOUNT_COST, "Mount.Journeyman.Cost", 100000, ConfigValueCache::Reloadable::Yes, [](uint32 const& value) { return value <= MAX_MONEY_AMOUNT; }, "<= MAX_MONEY_AMOUNT");
+    SetConfigValue<uint32>(CONFIG_JOURNEYMAN_TRAIN_COST, "Mount.Journeyman.Training.Cost", 500000, ConfigValueCache::Reloadable::No, [](uint32 const& value) { return value <= MAX_MONEY_AMOUNT; }, "<= MAX_MONEY_AMOUNT");
+    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_EXPERT, "Mount.Expert.Level", 60, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
+    SetConfigValue<uint32>(CONFIG_EXPERT_MOUNT_COST, "Mount.Expert.Cost", 500000, ConfigValueCache::Reloadable::Yes, [](uint32 const& value) { return value <= MAX_MONEY_AMOUNT; }, "<= MAX_MONEY_AMOUNT");
+    SetConfigValue<uint32>(CONFIG_EXPERT_TRAIN_COST, "Mount.Expert.Training.Cost", 2500000, ConfigValueCache::Reloadable::No, [](uint32 const& value) { return value <= MAX_MONEY_AMOUNT; }, "<= MAX_MONEY_AMOUNT");
+    SetConfigValue<uint32>(CONFIG_RIDING_LEVEL_ARTISAN, "Mount.Artisan.Level", 70, ConfigValueCache::Reloadable::No, [this](uint32 const& value) { return value > 0 && value <= GetConfigValue<uint32>(CONFIG_MAX_PLAYER_LEVEL); }, "> 0 && <= CONFIG_MAX_PLAYER_LEVEL");
+    SetConfigValue<uint32>(CONFIG_ARTISAN_MOUNT_COST, "Mount.Artisan.Cost", 1000000, ConfigValueCache::Reloadable::Yes, [](uint32 const& value) { return value <= MAX_MONEY_AMOUNT; }, "<= MAX_MONEY_AMOUNT");
+    SetConfigValue<uint32>(CONFIG_ARTISAN_TRAIN_COST, "Mount.Artisan.Training.Cost", 50000000, ConfigValueCache::Reloadable::No, [](uint32 const& value) { return value <= MAX_MONEY_AMOUNT; }, "<= MAX_MONEY_AMOUNT");
 
     SetConfigValue<uint32>(CONFIG_MIN_DUALSPEC_LEVEL, "MinDualSpecLevel", 40);
 

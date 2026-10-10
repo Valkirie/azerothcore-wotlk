@@ -2125,37 +2125,93 @@ EnablePlayerSettings = 0
 MaxPlayerLevel = 80
 
 #
-#    RidingLevelApprentive
+#    Mount.Apprentice.Level
 #        Description: Level requirement for apprentice riding, first-tier class mounts, and the
 #                     apprentice riding information mail.
 #        Range:       1-MaxPlayerLevel
 #        Default:     20
 
-RidingLevelApprentive = 20
+Mount.Apprentice.Level = 20
 
 #
-#    RidingLevelJourneyman
+#    Mount.Apprentice.Cost
+#        Description: Cost of apprentice riding mounts in Copper.
+#        Default:     10000 - (1 Gold)
+
+Mount.Apprentice.Cost = 10000
+
+#
+#    Mount.Apprentice.Training.Cost
+#        Description: Cost of apprentice riding training in Copper.
+#        Default:     40000 - (4 Gold)
+
+Mount.Apprentice.Training.Cost = 40000
+
+#
+#    Mount.Journeyman.Level
 #        Description: Level requirement for journeyman riding.
 #        Range:       1-MaxPlayerLevel
 #        Default:     40
 
-RidingLevelJourneyman = 40
+Mount.Journeyman.Level = 40
 
 #
-#    RidingLevelExpert
+#    Mount.Journeyman.Cost
+#        Description: Cost of journeyman riding mounts in Copper.
+#        Default:     100000 - (10 Gold)
+
+Mount.Journeyman.Cost = 100000
+
+#
+#    Mount.Journeyman.Training.Cost
+#        Description: Cost of journeyman riding training in Copper.
+#        Default:     500000 - (50 Gold)
+
+Mount.Journeyman.Training.Cost = 500000
+
+#
+#    Mount.Expert.Level
 #        Description: Level requirement for expert riding.
 #        Range:       1-MaxPlayerLevel
 #        Default:     60
 
-RidingLevelExpert = 60
+Mount.Expert.Level = 60
 
 #
-#    RidingLevelArtisan
+#    Mount.Expert.Cost
+#        Description: Cost of expert riding mounts in Copper.
+#        Default:     500000 - (50 Gold)
+
+Mount.Expert.Cost = 500000
+
+#
+#    Mount.Expert.Training.Cost
+#        Description: Cost of expert riding training in Copper.
+#        Default:     2500000 - (250 Gold)
+
+Mount.Expert.Training.Cost = 2500000
+
+#
+#    Mount.Artisan.Level
 #        Description: Level requirement for artisan riding.
 #        Range:       1-MaxPlayerLevel
 #        Default:     70
 
-RidingLevelArtisan = 70
+Mount.Artisan.Level = 70
+
+#
+#    Mount.Artisan.Cost
+#        Description: Cost of artisan riding mounts in Copper.
+#        Default:     1000000 - (100 Gold)
+
+Mount.Artisan.Cost = 1000000
+
+#
+#    Mount.Artisan.Training.Cost
+#        Description: Cost of artisan riding training in Copper.
+#        Default:     50000000 - (5000 Gold)
+
+Mount.Artisan.Training.Cost = 50000000
 
 #
 #    MinDualSpecLevel

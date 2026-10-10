@@ -103,7 +103,7 @@ namespace
         }
     }
 
-    uint8 GetMountTrainerSpellLevel(uint32 spellId, uint8 defaultLevel)
+    void ApplyMountTrainerSpellConfig(uint32 spellId, uint8& level, uint32& cost)
     {
         switch (spellId)
         {
@@ -112,18 +112,32 @@ namespace
             case 5785:
             case 13819:
             case 13820:
-            case 33388:
             case 34768:
             case 34769:
-                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_APPRENTICE));
+                level = uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_APPRENTICE));
+                break;
+            case 33388:
+            case 33389:
+                level = uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_APPRENTICE));
+                cost = sWorld->getIntConfig(CONFIG_APPRENTICE_TRAIN_COST);
+                break;
             case 33391:
-                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_JOURNEYMAN));
+            case 33392:
+                level = uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_JOURNEYMAN));
+                cost = sWorld->getIntConfig(CONFIG_JOURNEYMAN_TRAIN_COST);
+                break;
             case 34090:
-                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_EXPERT));
+            case 34092:
+                level = uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_EXPERT));
+                cost = sWorld->getIntConfig(CONFIG_EXPERT_TRAIN_COST);
+                break;
             case 34091:
-                return uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_ARTISAN));
+            case 34093:
+                level = uint8(sWorld->getIntConfig(CONFIG_RIDING_LEVEL_ARTISAN));
+                cost = sWorld->getIntConfig(CONFIG_ARTISAN_TRAIN_COST);
+                break;
             default:
-                return defaultLevel;
+                break;
         }
     }
 }
@@ -10053,7 +10067,7 @@ void ObjectMgr::LoadTrainers()
             spell.ReqAbility[1] = fields[6].Get<uint32>();
             spell.ReqAbility[2] = fields[7].Get<uint32>();
             spell.ReqLevel = fields[8].Get<uint8>();
-            spell.ReqLevel = GetMountTrainerSpellLevel(spell.SpellId, spell.ReqLevel);
+            ApplyMountTrainerSpellConfig(spell.SpellId, spell.ReqLevel, spell.MoneyCost);
 
             SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spell.SpellId);
             if (!spellInfo)
