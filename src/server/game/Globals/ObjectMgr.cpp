@@ -140,6 +140,30 @@ namespace
                 break;
         }
     }
+
+    void ApplyMountItemConfig(uint32 requiredSkill, uint32 requiredSkillRank, uint32& requiredLevel)
+    {
+        if (requiredSkill != SKILL_RIDING)
+            return;
+
+        switch (requiredSkillRank)
+        {
+            case 75:
+                requiredLevel = sWorld->getIntConfig(CONFIG_RIDING_LEVEL_APPRENTICE);
+                break;
+            case 150:
+                requiredLevel = sWorld->getIntConfig(CONFIG_RIDING_LEVEL_JOURNEYMAN);
+                break;
+            case 225:
+                requiredLevel = sWorld->getIntConfig(CONFIG_RIDING_LEVEL_EXPERT);
+                break;
+            case 300:
+                requiredLevel = sWorld->getIntConfig(CONFIG_RIDING_LEVEL_ARTISAN);
+                break;
+            default:
+                break;
+        }
+    }
 }
 
 std::string GetScriptsTableNameByType(ScriptsType type)
@@ -3469,6 +3493,7 @@ void ObjectMgr::LoadItemTemplates()
         itemTemplate.RequiredLevel             = uint32(fields[16].Get<uint8>());
         itemTemplate.RequiredSkill             = uint32(fields[17].Get<uint16>());
         itemTemplate.RequiredSkillRank         = uint32(fields[18].Get<uint16>());
+        ApplyMountItemConfig(itemTemplate.RequiredSkill, itemTemplate.RequiredSkillRank, itemTemplate.RequiredLevel);
         itemTemplate.RequiredSpell             = fields[19].Get<uint32>();
         itemTemplate.RequiredHonorRank         = fields[20].Get<uint32>();
         itemTemplate.RequiredCityRank          = fields[21].Get<uint32>();
