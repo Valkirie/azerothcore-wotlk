@@ -16,10 +16,11 @@ DROP TABLE IF EXISTS `rochenoire_scale_level_creature`;
 DROP TABLE IF EXISTS `rochenoire_scale_consumable_loot`;
 DROP TABLE IF EXISTS `rochenoire_items_not_scaled_from_vendors`;
 DROP TABLE IF EXISTS `rochenoire_scale_zone`;
+DROP TABLE IF EXISTS `rochenoire_scale_quest`;
 DROP TABLE IF EXISTS `rochenoire_enchantment_family`;
 DROP TABLE IF EXISTS `rochenoire_smart_loot_data`;
 
-CREATE TABLE IF NOT EXISTS `rochenoire_scale_raid_creature_template` (
+CREATE TABLE `rochenoire_scale_raid_creature_template` (
   `entry` MEDIUMINT(8) UNSIGNED NOT NULL COMMENT 'creature entry',
   `m_entry` MEDIUMINT(8) UNSIGNED NOT NULL DEFAULT '0' COMMENT 'map entry',
   `nb_tank` SMALLINT(1) UNSIGNED NOT NULL DEFAULT '2' COMMENT 'nbr tank',
@@ -31,41 +32,41 @@ CREATE TABLE IF NOT EXISTS `rochenoire_scale_raid_creature_template` (
   PRIMARY KEY (`entry`,`m_entry`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
-CREATE TABLE IF NOT EXISTS `rochenoire_scale_raid_creature_pool` (
+CREATE TABLE `rochenoire_scale_raid_creature_pool` (
   `guid` INT(10) UNSIGNED NOT NULL,
   `pool_id` INT(10) UNSIGNED DEFAULT NULL,
   `comment` VARCHAR(255) DEFAULT NULL,
   PRIMARY KEY (`guid`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
-CREATE TABLE IF NOT EXISTS `rochenoire_scale_level_creature_template` (
+CREATE TABLE `rochenoire_scale_level_creature_template` (
   `entry` MEDIUMINT(8) UNSIGNED NOT NULL COMMENT 'creature entry',
   `flvar` SMALLINT SIGNED NOT NULL DEFAULT '0' COMMENT 'force level variation',
   `comment` VARCHAR(255) DEFAULT NULL,
   PRIMARY KEY (`entry`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
-CREATE TABLE IF NOT EXISTS `rochenoire_scale_level_creature` (
+CREATE TABLE `rochenoire_scale_level_creature` (
   `guid` MEDIUMINT(8) UNSIGNED NOT NULL COMMENT 'creature guid',
   `flvar` SMALLINT SIGNED NOT NULL DEFAULT '0' COMMENT 'force level variation',
   `comment` VARCHAR(255) DEFAULT NULL,
   PRIMARY KEY (`guid`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
-CREATE TABLE IF NOT EXISTS `rochenoire_scale_consumable_loot` (
+CREATE TABLE `rochenoire_scale_consumable_loot` (
   `ItemId` MEDIUMINT(8) UNSIGNED NOT NULL,
   `RitemId` MEDIUMINT(8) UNSIGNED NOT NULL,
   `Plevel` MEDIUMINT(8) UNSIGNED NOT NULL,
   PRIMARY KEY (`ItemId`,`RitemId`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
-CREATE TABLE IF NOT EXISTS `rochenoire_items_not_scaled_from_vendors` (
+CREATE TABLE `rochenoire_items_not_scaled_from_vendors` (
   `ItemId` MEDIUMINT(8) UNSIGNED NOT NULL,
   `comment` VARCHAR(255) DEFAULT NULL,
   PRIMARY KEY (`ItemId`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
-CREATE TABLE IF NOT EXISTS `rochenoire_scale_zone` (
+CREATE TABLE `rochenoire_scale_zone` (
   `areaName` VARCHAR(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL,
   `mapId` INT UNSIGNED NOT NULL,
   `areaId` INT UNSIGNED NOT NULL,
@@ -75,21 +76,21 @@ CREATE TABLE IF NOT EXISTS `rochenoire_scale_zone` (
   PRIMARY KEY (`areaId`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
-CREATE TABLE IF NOT EXISTS `rochenoire_scale_quest` (
+CREATE TABLE `rochenoire_scale_quest` (
   `QuestId` INT UNSIGNED NOT NULL,
   `SourceAreaId` INT UNSIGNED NOT NULL,
   `comment` VARCHAR(255) DEFAULT NULL,
   PRIMARY KEY (`QuestId`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
-CREATE TABLE IF NOT EXISTS `rochenoire_enchantment_family` (
+CREATE TABLE `rochenoire_enchantment_family` (
   `ench` INT UNSIGNED NOT NULL,
   `propertyFamily` INT UNSIGNED NOT NULL,
   `suffixFamily` INT UNSIGNED NOT NULL,
   PRIMARY KEY (`ench`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
-CREATE TABLE IF NOT EXISTS `rochenoire_smart_loot_data` (
+CREATE TABLE `rochenoire_smart_loot_data` (
   `table` VARCHAR(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL,
   `Reference` INT UNSIGNED NOT NULL,
   `LootInfo` MEDIUMINT(8) SIGNED NOT NULL DEFAULT (-1),
