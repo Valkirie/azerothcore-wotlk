@@ -1786,6 +1786,7 @@ public:
     float GetCreatureBaseStatRatio(Creature const* creature, uint8 scaledLevel, SpellType scalingType) const;
 
     ZoneFlex const* GetAreaZoneFlex(uint32 areaId, uint32 zoneId = 0) const;
+    uint8 GetExplorationLevel(uint32 areaId, uint32 zoneId, uint8 playerLevel, uint8 areaLevel) const;
     ZoneFlex const* GetQuestZoneFlex(int32 zoneOrSort) const;
     ZoneFlex const* GetQuestZoneFlex(uint32 questId, int32 zoneOrSort) const;
     uint8 GetQuestLevelScaled(int32 zoneOrSort, uint8 playerLevel) const;

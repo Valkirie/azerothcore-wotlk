@@ -10784,6 +10784,17 @@ ZoneFlex const* ObjectMgr::GetAreaZoneFlex(uint32 areaId, uint32 zoneId) const
     return nullptr;
 }
 
+uint8 ObjectMgr::GetExplorationLevel(uint32 areaId, uint32 zoneId, uint8 playerLevel, uint8 areaLevel) const
+{
+    if (ZoneFlex const* zoneFlex = GetAreaZoneFlex(areaId, zoneId))
+    {
+        if (!zoneFlex->IsScalingDisabled())
+            return std::clamp(playerLevel, zoneFlex->LevelRangeMin, zoneFlex->LevelRangeMax);
+    }
+
+    return areaLevel;
+}
+
 ZoneFlex const* ObjectMgr::GetQuestZoneFlex(int32 zoneOrSort) const
 {
     if (zoneOrSort <= 0)

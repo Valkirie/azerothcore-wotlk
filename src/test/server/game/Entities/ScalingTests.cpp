@@ -385,6 +385,39 @@ TEST_F(ScalingTests, AreaScaling_InheritsParentUnlessChildOverrides)
         sObjectMgr->RemoveZoneFlexForTest(ChildAreaId);
 }
 
+TEST_F(ScalingTests, ExplorationLevelUsesEnabledAreaOrParentRange)
+{
+    constexpr uint32 ParentZoneId = 65010;
+    constexpr uint32 ChildAreaId = 65011;
+    std::optional<ZoneFlex> originalParent;
+    std::optional<ZoneFlex> originalChild;
+
+    if (ZoneFlex const* zoneFlex = sObjectMgr->GetZoneFlexForTest(ParentZoneId))
+        originalParent = *zoneFlex;
+    if (ZoneFlex const* zoneFlex = sObjectMgr->GetZoneFlexForTest(ChildAreaId))
+        originalChild = *zoneFlex;
+
+    sObjectMgr->SetZoneFlexForTest({ "Parent", ParentZoneId, 0, 10, 20, 0 });
+    sObjectMgr->RemoveZoneFlexForTest(ChildAreaId);
+
+    EXPECT_EQ(sObjectMgr->GetExplorationLevel(ChildAreaId, ParentZoneId, 5, 15), 10);
+    EXPECT_EQ(sObjectMgr->GetExplorationLevel(ChildAreaId, ParentZoneId, 15, 15), 15);
+    EXPECT_EQ(sObjectMgr->GetExplorationLevel(ChildAreaId, ParentZoneId, 25, 15), 20);
+
+    sObjectMgr->SetZoneFlexForTest({ "Disabled Child", ChildAreaId, 0, 10, 20, AREA_FLAG_LOWLEVEL });
+    EXPECT_EQ(sObjectMgr->GetExplorationLevel(ChildAreaId, ParentZoneId, 25, 15), 15);
+    EXPECT_EQ(sObjectMgr->GetExplorationLevel(ChildAreaId + 1, ParentZoneId + 1, 25, 15), 15);
+
+    if (originalParent)
+        sObjectMgr->SetZoneFlexForTest(*originalParent);
+    else
+        sObjectMgr->RemoveZoneFlexForTest(ParentZoneId);
+    if (originalChild)
+        sObjectMgr->SetZoneFlexForTest(*originalChild);
+    else
+        sObjectMgr->RemoveZoneFlexForTest(ChildAreaId);
+}
+
 TEST_F(ScalingTests, EvP_Proc)
 {
     TestPlayer* source = CreatePlayer(1, TestLowLevel);
