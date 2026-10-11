@@ -19,6 +19,7 @@
 #include "Creature.h"
 #include "GameObject.h"
 #include "Group.h"
+#include "Item.h"
 #include "LootItemStorage.h"
 #include "LootMgr.h"
 #include "Object.h"
@@ -111,7 +112,11 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
         loot->NotifyItemRemoved(lootItem->itemIndex);
         loot->unlootedCount--;
 
-        player->SendItemRetrievalMail(lootItem->itemid, lootItem->count);
+        LootItem::ItemInfo const& itemInfo = lootItem->GetItemInfoForPlayer(player);
+        if (Item* mailItem = Item::CreateItem(itemInfo.itemId, lootItem->count, player, false, itemInfo.randomPropertyId))
+            player->SendItemRetrievalMail(mailItem);
+        else
+            player->SendItemRetrievalMail(itemInfo.itemId, lootItem->count);
     }
 
     // If player is removing the last LootItem, delete the empty container.
@@ -540,8 +545,9 @@ void WorldSession::HandleLootMasterGiveOpcode(WorldPacket& recvData)
 
     LootItem& item = slotid >= loot->items.size() ? loot->quest_items[slotid - loot->items.size()] : loot->items[slotid];
 
+    LootItem::ItemInfo const& itemInfo = item.GetItemInfoForPlayer(target);
     ItemPosCountVec dest;
-    InventoryResult msg = target->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item.itemid, item.count);
+    InventoryResult msg = target->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemInfo.itemId, item.count);
     if (!item.AllowedForPlayer(target, loot->sourceWorldObjectGUID))
         msg = EQUIP_ERR_YOU_CAN_NEVER_USE_THAT_ITEM;
     if (msg != EQUIP_ERR_OK)
@@ -560,7 +566,7 @@ void WorldSession::HandleLootMasterGiveOpcode(WorldPacket& recvData)
     AllowedLooterSet looters = item.GetAllowedLooters();
 
     // not move item from loot to target inventory
-    Item* newitem = target->StoreNewItem(dest, item.itemid, true, item.randomPropertyId, looters);
+    Item* newitem = target->StoreNewItem(dest, itemInfo.itemId, true, itemInfo.randomPropertyId, looters);
     target->SendNewItem(newitem, uint32(item.count), false, false, true);
     target->UpdateLootAchievements(&item, loot);
 

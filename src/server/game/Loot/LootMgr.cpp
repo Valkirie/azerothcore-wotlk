@@ -552,6 +552,20 @@ void LootItem::GetScaledValuesForPlayer(uint32 playerLevel, Player* player, uint
     }
 }
 
+LootItem::ItemInfo const& LootItem::GetItemInfoForPlayer(Player* player) const
+{
+    ObjectGuid playerGuid = player ? player->GetGUID() : ObjectGuid::Empty;
+    auto itr = playerItemInfo.find(playerGuid);
+    if (itr != playerItemInfo.end())
+        return itr->second;
+
+    ItemInfo itemInfo = { itemid, randomSuffix, randomPropertyId };
+    if (player)
+        GetScaledValuesForPlayer(player->getAreaZoneLevel(), player, itemInfo.itemId, itemInfo.randomSuffix, itemInfo.randomPropertyId);
+
+    return playerItemInfo.emplace(playerGuid, itemInfo).first->second;
+}
+
 // Basic checks for player/item compatibility - if false no chance to see the item in the loot
 bool LootItem::AllowedForPlayer(Player const* player, ObjectGuid source) const
 {
@@ -1110,6 +1124,16 @@ ByteBuffer& operator<<(ByteBuffer& b, LootItem const& li)
     return b;
 }
 
+static void WriteLootItemForPlayer(ByteBuffer& buffer, LootItem const& lootItem, Player* player)
+{
+    LootItem::ItemInfo const& itemInfo = lootItem.GetItemInfoForPlayer(player);
+    buffer << uint32(itemInfo.itemId);
+    buffer << uint32(lootItem.count);
+    buffer << uint32(sObjectMgr->GetItemTemplate(itemInfo.itemId)->DisplayInfoID);
+    buffer << uint32(itemInfo.randomSuffix);
+    buffer << uint32(itemInfo.randomPropertyId);
+}
+
 ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
 {
     if (lv.permission == NONE_PERMISSION)
@@ -1187,7 +1211,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                             // item shall not be displayed.
                             continue;
 
-                        b << uint8(i) << l.items[i];
+                        b << uint8(i);
+                        WriteLootItemForPlayer(b, l.items[i], lv.viewer);
                         b << uint8(slot_type);
                         ++itemsShown;
                     }
@@ -1204,7 +1229,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                             // item shall not be displayed.
                             continue;
 
-                        b << uint8(i) << l.items[i];
+                        b << uint8(i);
+                        WriteLootItemForPlayer(b, l.items[i], lv.viewer);
                         b << uint8(LOOT_SLOT_TYPE_ALLOW_LOOT);
                         ++itemsShown;
                     }
@@ -1219,7 +1245,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                 {
                     if (!l.items[i].is_looted && !l.items[i].freeforall && l.items[i].conditions.empty() && l.items[i].AllowedForPlayer(lv.viewer, l.sourceWorldObjectGUID))
                     {
-                        b << uint8(i) << l.items[i];
+                        b << uint8(i);
+                        WriteLootItemForPlayer(b, l.items[i], lv.viewer);
                         b << uint8(slot_type);
                         ++itemsShown;
                     }
@@ -1260,13 +1287,13 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                     }
 
                     b << uint8(l.items.size() + (qi - q_list->begin()));
-                    b << item;
+                    WriteLootItemForPlayer(b, item, lv.viewer);
                     b << uint8(lv.permission == MASTER_PERMISSION ? LOOT_SLOT_TYPE_MASTER : LOOT_SLOT_TYPE_LOCKED);
                 }
                 else
                 {
                     b << uint8(l.items.size() + (qi - q_list->begin()));
-                    b << item;
+                    WriteLootItemForPlayer(b, item, lv.viewer);
 
                     if (item.follow_loot_rules)
                     {
@@ -1312,7 +1339,7 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
             if (!fi->is_looted && !item.is_looted)
             {
                 b << uint8(fi->index);
-                b << item;
+                WriteLootItemForPlayer(b, item, lv.viewer);
                 // Xinef: Here are FFA items, so dont use owner permision
                 b << uint8(LOOT_SLOT_TYPE_ALLOW_LOOT /*slotType*/);
                 ++itemsShown;
@@ -1331,7 +1358,7 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
             if (!ci->is_looted && !item.is_looted)
             {
                 b << uint8(ci->index);
-                b << item;
+                WriteLootItemForPlayer(b, item, lv.viewer);
                 if (item.follow_loot_rules)
                 {
                     switch (lv.permission)

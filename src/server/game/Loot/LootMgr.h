@@ -153,6 +153,15 @@ typedef GuidSet AllowedLooterSet;
 
 struct LootItem
 {
+    struct ItemInfo
+    {
+        uint32 itemId;
+        uint32 randomSuffix;
+        int32 randomPropertyId;
+    };
+
+    typedef std::map<ObjectGuid, ItemInfo> PlayerItemInfo;
+
     uint32  itemid;
     uint32  loot_level = 0;
     bool    has_random_property = false;
@@ -174,6 +183,7 @@ struct LootItem
     uint8   groupid           : 7;
     uint32  randomPropertyFamily = 0;
     uint32  randomSuffixFamily = 0;
+    mutable PlayerItemInfo playerItemInfo;
 
     // Constructor, copies most fields from LootStoreItem, generates random count and random suffixes/properties
     // Should be called for non-reference LootStoreItem entries only (reference = 0)
@@ -181,6 +191,7 @@ struct LootItem
 
     void ScaleForPlayer(uint32 playerLevel, Player* player);
     void GetScaledValuesForPlayer(uint32 playerLevel, Player* player, uint32& scaledItemId, uint32& scaledRandomSuffix, int32& scaledRandomProperty) const;
+    ItemInfo const& GetItemInfoForPlayer(Player* player) const;
 
     LootItem() = default;
 

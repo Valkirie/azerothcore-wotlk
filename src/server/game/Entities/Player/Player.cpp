@@ -8362,8 +8362,6 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
     // need know merged fishing/corpse loot type for achievements
     loot->loot_type = loot_type;
 
-    GetScaledLootForPlayer(loot);
-
     if (!sScriptMgr->OnAllowedToLootContainerCheck(this, guid))
     {
         SendLootError(guid, LOOT_ERROR_DIDNT_KILL);
@@ -8391,21 +8389,6 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
     }
     else
         SendLootError(guid, LOOT_ERROR_DIDNT_KILL);
-}
-
-void Player::GetScaledLootForPlayer(Loot* loot)
-{
-    if (!loot)
-        return;
-
-    uint32 playerLevel = getAreaZoneLevel();
-    uint32 maxSlot = loot->GetMaxSlotInLootFor(this);
-    for (uint32 slot = 0; slot < maxSlot; ++slot)
-    {
-        LootItem* lootItem = loot->LootItemInSlot(slot, this);
-        if (lootItem)
-            lootItem->ScaleForPlayer(playerLevel, this);
-    }
 }
 
 void Player::SendLootError(ObjectGuid guid, LootError error)
@@ -13943,12 +13926,13 @@ LootItem* Player::StoreLootItem(uint8 lootSlot, Loot* loot, InventoryResult& msg
         return nullptr;
     }
 
+    LootItem::ItemInfo const& itemInfo = item->GetItemInfoForPlayer(this);
     ItemPosCountVec dest;
-    msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item->itemid, item->count);
+    msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemInfo.itemId, item->count);
     if (msg == EQUIP_ERR_OK)
     {
         AllowedLooterSet looters = item->GetAllowedLooters();
-        Item* newitem = StoreNewItem(dest, item->itemid, true, item->randomPropertyId, looters);
+        Item* newitem = StoreNewItem(dest, itemInfo.itemId, true, itemInfo.randomPropertyId, looters);
 
         if (qitem)
         {
@@ -13993,7 +13977,7 @@ LootItem* Player::StoreLootItem(uint8 lootSlot, Loot* loot, InventoryResult& msg
     }
     else
     {
-        SendEquipError(msg, nullptr, nullptr, item->itemid);
+        SendEquipError(msg, nullptr, nullptr, itemInfo.itemId);
     }
 
     return item;

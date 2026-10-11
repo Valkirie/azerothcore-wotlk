@@ -324,6 +324,40 @@ TEST_F(LootScalingTest, SoloRandomSuffixScalesWithinGeneratedFamily)
 	EXPECT_EQ(item.randomSuffixFamily, SuffixFamily);
 }
 
+TEST_F(LootScalingTest, SharedLootResolvesEachRecipientWithoutMutatingBaseItem)
+{
+    TestPlayer* lowPlayer = CreatePlayer(1, LowLevel);
+    TestPlayer* highPlayer = CreatePlayer(2, HighLevel);
+    LootItem item = CreateLootItem(PlainItemId);
+
+    LootItem::ItemInfo const& lowInfo = item.GetItemInfoForPlayer(lowPlayer);
+    LootItem::ItemInfo const& highInfo = item.GetItemInfoForPlayer(highPlayer);
+
+    EXPECT_EQ(lowInfo.itemId, ScaledItemId(PlainItemId, LowLevel));
+    EXPECT_EQ(highInfo.itemId, ScaledItemId(PlainItemId, HighLevel));
+    EXPECT_EQ(item.itemid, PlainItemId);
+    EXPECT_EQ(item.loot_level, 0u);
+    EXPECT_EQ(&item.GetItemInfoForPlayer(lowPlayer), &lowInfo);
+    EXPECT_EQ(&item.GetItemInfoForPlayer(highPlayer), &highInfo);
+}
+
+TEST_F(LootScalingTest, SharedLootCachesRecipientRandomValues)
+{
+    TestPlayer* lowPlayer = CreatePlayer(1, LowLevel);
+    TestPlayer* highPlayer = CreatePlayer(2, HighLevel);
+    LootItem item = CreateLootItem(PropertyItemId);
+    int32 baseRandomProperty = item.randomPropertyId;
+
+    LootItem::ItemInfo const& lowInfo = item.GetItemInfoForPlayer(lowPlayer);
+    LootItem::ItemInfo const& highInfo = item.GetItemInfoForPlayer(highPlayer);
+
+    EXPECT_EQ(lowInfo.randomPropertyId, int32(LowPropertyId));
+    EXPECT_EQ(highInfo.randomPropertyId, int32(HighPropertyId));
+    EXPECT_EQ(item.randomPropertyId, baseRandomProperty);
+    EXPECT_EQ(&item.GetItemInfoForPlayer(lowPlayer), &lowInfo);
+    EXPECT_EQ(&item.GetItemInfoForPlayer(highPlayer), &highInfo);
+}
+
 TEST_F(LootScalingTest, GroupPlainItemResolvesAndCachesEachPlayersLevel)
 {
 	TestPlayer* lowPlayer = CreatePlayer(1, LowLevel);
