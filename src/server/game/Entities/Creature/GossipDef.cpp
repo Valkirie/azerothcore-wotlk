@@ -426,7 +426,7 @@ void PlayerMenu::SendQuestGiverQuestDetails(Quest const* quest, ObjectGuid npcGU
         Player* player = _session->GetPlayer();
         bool const rewardWithMoney = player && (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(player));
         uint32 questXp = player && !rewardWithMoney ? player->CalculateQuestRewardXP(quest) : 0;
-        uint8 rewardLevel = player ? player->CalculateQuestRewardLevel(questXp) : 0;
+        uint8 rewardLevel = player ? player->CalculateQuestRewardLevel(quest, questXp) : 0;
 
         data << uint32(quest->GetRewChoiceItemsCount());
         for (uint32 i = 0; i < QUEST_REWARD_CHOICES_COUNT; ++i)
@@ -434,7 +434,7 @@ void PlayerMenu::SendQuestGiverQuestDetails(Quest const* quest, ObjectGuid npcGU
             if (!quest->RewardChoiceItemId[i])
                 continue;
 
-            uint32 itemId = LootStore::LoadScaledLoot(quest->RewardChoiceItemId[i], player, rewardLevel);
+            uint32 itemId = LootStore::LoadScaledLootAtLevel(quest->RewardChoiceItemId[i], player, rewardLevel);
             data << itemId;
             data << uint32(quest->RewardChoiceItemCount[i]);
 
@@ -451,7 +451,7 @@ void PlayerMenu::SendQuestGiverQuestDetails(Quest const* quest, ObjectGuid npcGU
             if (!quest->RewardItemId[i])
                 continue;
 
-            uint32 itemId = LootStore::LoadScaledLoot(quest->RewardItemId[i], player, rewardLevel);
+            uint32 itemId = LootStore::LoadScaledLootAtLevel(quest->RewardItemId[i], player, rewardLevel);
             data << itemId;
             data << uint32(quest->RewardItemIdCount[i]);
 
@@ -545,7 +545,7 @@ void PlayerMenu::SendQuestQueryResponse(Quest const* quest) const
     Player* player = _session->GetPlayer();
     bool const rewardWithMoney = player && (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(player));
     uint32 questXp = player && !rewardWithMoney ? player->CalculateQuestRewardXP(quest) : 0;
-    uint8 rewardLevel = player ? player->CalculateQuestRewardLevel(questXp) : 0;
+    uint8 rewardLevel = player ? player->CalculateQuestRewardLevel(quest, questXp) : 0;
 
     if (quest->HasFlag(QUEST_FLAGS_HIDDEN_REWARDS))
         data << uint32(0);                                  // Hide money rewarded
@@ -582,12 +582,12 @@ void PlayerMenu::SendQuestQueryResponse(Quest const* quest) const
     {
         for (uint8 i = 0; i < QUEST_REWARDS_COUNT; ++i)
         {
-            data << LootStore::LoadScaledLoot(quest->RewardItemId[i], player, rewardLevel);
+            data << LootStore::LoadScaledLootAtLevel(quest->RewardItemId[i], player, rewardLevel);
             data << uint32(quest->RewardItemIdCount[i]);
         }
         for (uint8 i = 0; i < QUEST_REWARD_CHOICES_COUNT; ++i)
         {
-            data << LootStore::LoadScaledLoot(quest->RewardChoiceItemId[i], player, rewardLevel);
+            data << LootStore::LoadScaledLootAtLevel(quest->RewardChoiceItemId[i], player, rewardLevel);
             data << uint32(quest->RewardChoiceItemCount[i]);
         }
     }
@@ -677,12 +677,12 @@ void PlayerMenu::SendQuestGiverOfferReward(Quest const* quest, ObjectGuid npcGUI
     Player* player = _session->GetPlayer();
     bool const rewardWithMoney = player && (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) || sScriptMgr->OnPlayerShouldBeRewardedWithMoneyInsteadOfExp(player));
     uint32 questXp = player && !rewardWithMoney ? player->CalculateQuestRewardXP(quest) : 0;
-    uint8 rewardLevel = player ? player->CalculateQuestRewardLevel(questXp) : 0;
+    uint8 rewardLevel = player ? player->CalculateQuestRewardLevel(quest, questXp) : 0;
 
     data << uint32(quest->GetRewChoiceItemsCount());
     for (uint32 i = 0; i < quest->GetRewChoiceItemsCount(); ++i)
     {
-        uint32 itemId = LootStore::LoadScaledLoot(quest->RewardChoiceItemId[i], player, rewardLevel);
+        uint32 itemId = LootStore::LoadScaledLootAtLevel(quest->RewardChoiceItemId[i], player, rewardLevel);
         data << itemId;
         data << uint32(quest->RewardChoiceItemCount[i]);
 
@@ -695,7 +695,7 @@ void PlayerMenu::SendQuestGiverOfferReward(Quest const* quest, ObjectGuid npcGUI
     data << uint32(quest->GetRewItemsCount());
     for (uint32 i = 0; i < quest->GetRewItemsCount(); ++i)
     {
-        uint32 itemId = LootStore::LoadScaledLoot(quest->RewardItemId[i], player, rewardLevel);
+        uint32 itemId = LootStore::LoadScaledLootAtLevel(quest->RewardItemId[i], player, rewardLevel);
         data << itemId;
         data << uint32(quest->RewardItemIdCount[i]);
 
