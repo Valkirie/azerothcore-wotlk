@@ -75,6 +75,13 @@ CREATE TABLE `rochenoire_scale_zone` (
   PRIMARY KEY (`areaId`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
 
+CREATE TABLE `rochenoire_scale_quest` (
+  `QuestId` INT UNSIGNED NOT NULL,
+  `SourceAreaId` INT UNSIGNED NOT NULL,
+  `comment` VARCHAR(255) DEFAULT NULL,
+  PRIMARY KEY (`QuestId`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8;
+
 CREATE TABLE `rochenoire_enchantment_family` (
   `ench` INT UNSIGNED NOT NULL,
   `propertyFamily` INT UNSIGNED NOT NULL,

@@ -10793,9 +10793,29 @@ ZoneFlex const* ObjectMgr::GetQuestZoneFlex(int32 zoneOrSort) const
     return zoneFlex && !zoneFlex->IsScalingDisabled() ? zoneFlex : nullptr;
 }
 
+ZoneFlex const* ObjectMgr::GetQuestZoneFlex(uint32 questId, int32 zoneOrSort) const
+{
+    QuestZoneFlexOverrideMap::const_iterator itr = mQuestZoneFlexOverrides.find(questId);
+    if (itr != mQuestZoneFlexOverrides.end())
+    {
+        ZoneFlex const* zoneFlex = GetZoneFlex(itr->second);
+        return zoneFlex && !zoneFlex->IsScalingDisabled() ? zoneFlex : nullptr;
+    }
+
+    return GetQuestZoneFlex(zoneOrSort);
+}
+
 uint8 ObjectMgr::GetQuestLevelScaled(int32 zoneOrSort, uint8 playerLevel) const
 {
     if (ZoneFlex const* zoneFlex = GetQuestZoneFlex(zoneOrSort))
+        return std::clamp(playerLevel, zoneFlex->LevelRangeMin, zoneFlex->LevelRangeMax);
+
+    return playerLevel;
+}
+
+uint8 ObjectMgr::GetQuestLevelScaled(uint32 questId, int32 zoneOrSort, uint8 playerLevel) const
+{
+    if (ZoneFlex const* zoneFlex = GetQuestZoneFlex(questId, zoneOrSort))
         return std::clamp(playerLevel, zoneFlex->LevelRangeMin, zoneFlex->LevelRangeMax);
 
     return playerLevel;
@@ -10818,37 +10838,58 @@ void ObjectMgr::LoadZoneScale()
     uint32 oldMSTime = getMSTime();
 
     mZoneFlexMap.clear();
+    mQuestZoneFlexOverrides.clear();
     QueryResult result = WorldDatabase.Query("SELECT * FROM rochenoire_scale_zone");
 
     if (!result)
     {
         LOG_INFO("sql.sql", ">> Loaded 0 Zone scaling details. DB table `rochenoire_scale_zone` is empty.");
-        LOG_INFO("server.loading", " ");
-        return;
+    }
+    else
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+
+            std::string areaName = fields[0].Get<std::string>();
+            uint32      mapId = fields[1].Get<uint32>();
+            uint32      areaId = fields[2].Get<uint32>();
+            uint32      LevelRangeMin = fields[3].Get<uint32>();
+            uint32      LevelRangeMax = fields[4].Get<uint32>();
+            uint32      areaFlags = fields[5].Get<uint32>();
+
+            ZoneFlex& data = mZoneFlexMap[areaId];
+            data.areaName = areaName;
+            data.mapId = mapId;
+            data.areaId = areaId;
+            data.LevelRangeMin = LevelRangeMin;
+            data.LevelRangeMax = LevelRangeMax;
+            data.areaFlags = areaFlags;
+
+        } while (result->NextRow());
     }
 
-    do
-    {
-        Field* fields = result->Fetch();
-
-        std::string areaName = fields[0].Get<std::string>();
-        uint32      mapId = fields[1].Get<uint32>();
-        uint32      areaId = fields[2].Get<uint32>();
-        uint32      LevelRangeMin = fields[3].Get<uint32>();
-        uint32      LevelRangeMax = fields[4].Get<uint32>();
-        uint32      areaFlags = fields[5].Get<uint32>();
-
-        ZoneFlex& data = mZoneFlexMap[areaId];
-        data.areaName = areaName;
-        data.mapId = mapId;
-        data.areaId = areaId;
-        data.LevelRangeMin = LevelRangeMin;
-        data.LevelRangeMax = LevelRangeMax;
-        data.areaFlags = areaFlags;
-
-    } while (result->NextRow());
-
     LOG_INFO("server.loading", ">> Loaded {} Zone scaling details in {} ms", (unsigned long)mZoneFlexMap.size(), GetMSTimeDiffToNow(oldMSTime));
+
+    QueryResult questResult = WorldDatabase.Query("SELECT `QuestId`, `SourceAreaId` FROM `rochenoire_scale_quest`");
+    if (questResult)
+    {
+        do
+        {
+            Field* fields = questResult->Fetch();
+            uint32 questId = fields[0].Get<uint32>();
+            uint32 areaId = fields[1].Get<uint32>();
+            if (!GetZoneFlex(areaId))
+            {
+                LOG_ERROR("sql.sql", "Quest {} references missing source area {} in `rochenoire_scale_quest`.", questId, areaId);
+                continue;
+            }
+
+            mQuestZoneFlexOverrides[questId] = areaId;
+        } while (questResult->NextRow());
+    }
+
+    LOG_INFO("server.loading", ">> Loaded {} Quest source zone overrides in {} ms", (unsigned long)mQuestZoneFlexOverrides.size(), GetMSTimeDiffToNow(oldMSTime));
     LOG_INFO("server.loading", " ");
 }
 

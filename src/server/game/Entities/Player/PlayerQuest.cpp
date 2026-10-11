@@ -1015,7 +1015,11 @@ bool Player::SatisfyQuestSkill(Quest const* qInfo, bool msg) const
 
 bool Player::SatisfyQuestLevel(Quest const* qInfo, bool msg) const
 {
-    if (GetLevel() < qInfo->GetMinLevel())
+    uint32 minimumLevel = qInfo->GetMinLevel();
+    if (ZoneFlex const* zoneFlex = sObjectMgr->GetQuestZoneFlex(qInfo->GetQuestId(), qInfo->GetZoneOrSort()))
+        minimumLevel = zoneFlex->LevelRangeMin;
+
+    if (GetLevel() < minimumLevel)
     {
         if (msg)
             SendCanTakeQuestResponse(INVALIDREASON_QUEST_FAILED_LOW_LEVEL);
@@ -1501,8 +1505,8 @@ int32 Player::GetQuestLevel(Quest const* quest) const
     if (!quest)
         return GetLevel();
 
-    if (sObjectMgr->GetQuestZoneFlex(quest->GetZoneOrSort()))
-        return sObjectMgr->GetQuestLevelScaled(quest->GetZoneOrSort(), GetLevel());
+    if (sObjectMgr->GetQuestZoneFlex(quest->GetQuestId(), quest->GetZoneOrSort()))
+        return sObjectMgr->GetQuestLevelScaled(quest->GetQuestId(), quest->GetZoneOrSort(), GetLevel());
 
     return quest->GetQuestLevel() > 0 ? quest->GetQuestLevel() : GetLevel();
 }
@@ -1521,7 +1525,7 @@ uint8 Player::CalculateQuestRewardLevel(Quest const* quest, uint32 xp) const
     }
 
     if (quest)
-        level = sObjectMgr->GetQuestLevelScaled(quest->GetZoneOrSort(), level);
+        level = sObjectMgr->GetQuestLevelScaled(quest->GetQuestId(), quest->GetZoneOrSort(), level);
 
     return level;
 }

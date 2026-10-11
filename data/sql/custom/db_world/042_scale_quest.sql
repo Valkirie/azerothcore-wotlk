@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS `rochenoire_scale_quest` (
+  `QuestId` INT UNSIGNED NOT NULL,
+  `SourceAreaId` INT UNSIGNED NOT NULL,
+  `comment` VARCHAR(255) DEFAULT NULL,
+  PRIMARY KEY (`QuestId`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8;

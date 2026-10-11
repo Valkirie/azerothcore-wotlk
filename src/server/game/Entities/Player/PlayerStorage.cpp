@@ -2425,7 +2425,9 @@ InventoryResult Player::CanUseItem(ItemTemplate const* proto) const
 
     if (GetLevel() < proto->RequiredLevel)
     {
-        return EQUIP_ERR_CANT_EQUIP_LEVEL_I;
+        Quest const* startQuest = proto->StartQuest ? sObjectMgr->GetQuestTemplate(proto->StartQuest) : nullptr;
+        if (!startQuest || !sObjectMgr->GetQuestZoneFlex(startQuest->GetQuestId(), startQuest->GetZoneOrSort()) || !SatisfyQuestLevel(startQuest, false))
+            return EQUIP_ERR_CANT_EQUIP_LEVEL_I;
     }
 
     // If World Event is not active, prevent using event dependant items

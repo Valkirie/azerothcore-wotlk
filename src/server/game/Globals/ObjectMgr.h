@@ -759,6 +759,7 @@ struct ZoneFlex
 };
 
 typedef std::unordered_map<uint32, ZoneFlex> ZoneFlexMap;
+typedef std::unordered_map<uint32, uint32> QuestZoneFlexOverrideMap;
 typedef std::unordered_map<uint32, uint32> RemplacementIdsMap;
 typedef std::unordered_map<uint32, RemplacementIdsMap> LootConsumableScaleMap;
 typedef std::unordered_set<uint32> ItemsNotScaledFromVendors;
@@ -1786,9 +1787,13 @@ public:
 
     ZoneFlex const* GetAreaZoneFlex(uint32 areaId, uint32 zoneId = 0) const;
     ZoneFlex const* GetQuestZoneFlex(int32 zoneOrSort) const;
+    ZoneFlex const* GetQuestZoneFlex(uint32 questId, int32 zoneOrSort) const;
     uint8 GetQuestLevelScaled(int32 zoneOrSort, uint8 playerLevel) const;
+    uint8 GetQuestLevelScaled(uint32 questId, int32 zoneOrSort, uint8 playerLevel) const;
     void SetZoneFlexForTest(ZoneFlex const& zoneFlex);
     void RemoveZoneFlexForTest(uint32 areaId);
+    void SetQuestZoneFlexOverrideForTest(uint32 questId, uint32 areaId) { mQuestZoneFlexOverrides[questId] = areaId; }
+    void RemoveQuestZoneFlexOverrideForTest(uint32 questId) { mQuestZoneFlexOverrides.erase(questId); }
     ZoneFlex const* GetZoneFlexForTest(uint32 areaId) const { return GetZoneFlex(areaId); }
 
     // Scales creature armor and damage while preserving the original level ratio.
@@ -1832,6 +1837,7 @@ public:
 
 private:
     ZoneFlexMap mZoneFlexMap;
+    QuestZoneFlexOverrideMap mQuestZoneFlexOverrides;
     CreatureForceLevelVar mCreatureForcedLevelVarMap;
     CreatureForceLevelVar mCreatureForcedLevelVarMapTemplate;
     LootConsumableScaleMap mLootConsumableScaleMap;
