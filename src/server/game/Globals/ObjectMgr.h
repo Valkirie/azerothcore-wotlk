@@ -1791,6 +1791,7 @@ public:
     ZoneFlex const* GetQuestZoneFlex(uint32 questId, int32 zoneOrSort) const;
     uint8 GetQuestLevelScaled(int32 zoneOrSort, uint8 playerLevel) const;
     uint8 GetQuestLevelScaled(uint32 questId, int32 zoneOrSort, uint8 playerLevel) const;
+    ZoneFlexMap const& GetZoneFlexMap() const { return mZoneFlexMap; }
     void SetZoneFlexForTest(ZoneFlex const& zoneFlex);
     void RemoveZoneFlexForTest(uint32 areaId);
     void SetQuestZoneFlexOverrideForTest(uint32 questId, uint32 areaId) { mQuestZoneFlexOverrides[questId] = areaId; }

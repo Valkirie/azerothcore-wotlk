@@ -11,6 +11,12 @@ local LOCALIZED = {
     },
 }
 local L = LOCALIZED[GetLocale()] or LOCALIZED.enUS
+local zoneRanges = {}
+local zonePositions = {}
+local mapLabels = {}
+local mapLabelLayer
+local zoneMapLabel
+local scanningMap = false
 
 local frame = CreateFrame("Frame", "RochenoireZoneScalingFrame", UIParent)
 frame:SetWidth(240)
@@ -68,8 +74,169 @@ local function ApplySavedPosition()
     end
 end
 
+local function UpdateHoveredZoneLabel()
+    if not WorldMapFrameAreaLabel or not WorldMapDetailFrame or not WorldMapDetailFrame:IsMouseOver() then
+        return
+    end
+
+    local cursorX, cursorY = GetCursorPosition()
+    local scale = WorldMapDetailFrame:GetEffectiveScale()
+    cursorX = cursorX / scale
+    cursorY = cursorY / scale
+
+    local x = (cursorX - WorldMapDetailFrame:GetLeft()) / WorldMapDetailFrame:GetWidth()
+    local y = (WorldMapDetailFrame:GetTop() - cursorY) / WorldMapDetailFrame:GetHeight()
+    if x < 0 or x > 1 or y < 0 or y > 1 then
+        return
+    end
+
+    local zoneName = UpdateMapHighlight(x, y)
+    local range = zoneName and zoneRanges[zoneName]
+    if range then
+        WorldMapFrameAreaLabel:SetText(string.format("%s (%d-%d)", zoneName, range.minimum, range.maximum))
+    end
+end
+
+local function HideMapLabels()
+    for _, label in ipairs(mapLabels) do
+        label:Hide()
+    end
+    if zoneMapLabel then
+        zoneMapLabel:Hide()
+    end
+end
+
+local function DiscoverZonePositions(continent)
+    if zonePositions[continent] then
+        return zonePositions[continent]
+    end
+
+    local positions = {}
+    zonePositions[continent] = positions
+    scanningMap = true
+
+    for y = 0, 1, 0.01 do
+        for x = 0, 1, 0.01 do
+            local zoneName, _, _, _, width, height, offsetX, offsetY = UpdateMapHighlight(x, y)
+            if zoneName and not positions[zoneName] and width and height and offsetX and offsetY then
+                positions[zoneName] = {
+                    x = offsetX + width / 2,
+                    y = offsetY + height / 2,
+                }
+            end
+        end
+    end
+
+    scanningMap = false
+    if WorldMapHighlight then
+        WorldMapHighlight:Hide()
+    end
+    return positions
+end
+
+local function RefreshMapLabels()
+    if scanningMap or not WorldMapFrame or not WorldMapFrame:IsShown() then
+        return
+    end
+
+    HideMapLabels()
+    local continent = GetCurrentMapContinent()
+    if continent <= 0 then
+        return
+    end
+
+    local mapCanvas = WorldMapDetailFrame or WorldMapButton
+    if not mapCanvas then
+        return
+    end
+
+    if not mapLabelLayer then
+        mapLabelLayer = CreateFrame("Frame", nil, mapCanvas)
+        mapLabelLayer:SetAllPoints(mapCanvas)
+        mapLabelLayer:SetFrameLevel(WorldMapFrame:GetFrameLevel() + 100)
+    end
+
+    local zone = GetCurrentMapZone()
+    if zone ~= 0 then
+        local zones = { GetMapZones(continent) }
+        local zoneName = zones[zone]
+        local range = zoneName and zoneRanges[zoneName]
+        if range then
+            if not zoneMapLabel then
+                zoneMapLabel = mapLabelLayer:CreateFontString(nil, "OVERLAY")
+                local font = GameFontNormal:GetFont()
+                zoneMapLabel:SetFont(font, 18, "OUTLINE")
+                zoneMapLabel:SetTextColor(1, 1, 1)
+                zoneMapLabel:SetShadowColor(0, 0, 0, 1)
+                zoneMapLabel:SetShadowOffset(1, -1)
+                zoneMapLabel:SetPoint("TOP", mapLabelLayer, "TOP", 0, -18)
+            end
+            zoneMapLabel:SetText(string.format("%s (%d-%d)", zoneName, range.minimum, range.maximum))
+            zoneMapLabel:Show()
+        end
+        return
+    end
+
+    local positions = DiscoverZonePositions(continent)
+    local labelIndex = 0
+    for zoneName, range in pairs(zoneRanges) do
+        local position = positions[zoneName]
+        if position then
+            labelIndex = labelIndex + 1
+            local label = mapLabels[labelIndex]
+            if not label then
+                label = mapLabelLayer:CreateFontString(nil, "OVERLAY")
+                local font = GameFontNormal:GetFont()
+                label:SetFont(font, 13, "OUTLINE")
+                label:SetTextColor(1, 1, 1)
+                label:SetShadowColor(0, 0, 0, 1)
+                label:SetShadowOffset(1, -1)
+                mapLabels[labelIndex] = label
+            end
+
+            label:ClearAllPoints()
+            label:SetPoint("CENTER", mapLabelLayer, "TOPLEFT", position.x * mapCanvas:GetWidth(), -position.y * mapCanvas:GetHeight())
+            label:SetText(string.format("%d-%d", range.minimum, range.maximum))
+            label:Show()
+        end
+    end
+end
+
+local function HandleCatalogMessage(message)
+    if message == "v2:catalog:start" then
+        zoneRanges = {}
+        HideMapLabels()
+        return true
+    end
+
+    local data = string.match(message, "^v2:catalog:data:(.*)$")
+    if data then
+        for record in string.gmatch(data, "([^|]+)") do
+            local minimum, maximum, zoneName = string.match(record, "^(%d+),(%d+),(.+)$")
+            if minimum and maximum and zoneName then
+                zoneRanges[zoneName] = {
+                    minimum = tonumber(minimum),
+                    maximum = tonumber(maximum),
+                }
+            end
+        end
+        return true
+    end
+
+    if message == "v2:catalog:done" then
+        RefreshMapLabels()
+        return true
+    end
+
+    return false
+end
+
 local function HandleMessage(message)
     if type(message) ~= "string" then
+        return
+    end
+
+    if HandleCatalogMessage(message) then
         return
     end
 
@@ -107,6 +274,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
         rangeText:SetText(L.WAITING)
         rangeText:SetTextColor(1, 1, 1)
         frame:Show()
+        SendAddonMessage(PREFIX, "v2:catalog", "WHISPER", UnitName("player"))
+        return
+    end
+
+    if event == "WORLD_MAP_UPDATE" then
+        RefreshMapLabels()
         return
     end
 
@@ -122,6 +295,10 @@ end)
 
 frame:RegisterEvent("CHAT_MSG_ADDON")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("WORLD_MAP_UPDATE")
+if WorldMapButton then
+    WorldMapButton:HookScript("OnUpdate", UpdateHoveredZoneLabel)
+end
 if RegisterAddonMessagePrefix then
     RegisterAddonMessagePrefix(PREFIX)
 end

@@ -1888,6 +1888,7 @@ public:
     void UpdatePvP(bool state, bool _override = false);
     void UpdateZone(uint32 newZone, uint32 newArea, bool force = false);
     void UpdateArea(uint32 newArea);
+    void SendZoneScalingCatalog() const;
     void SetNeedZoneUpdate(bool needUpdate) { m_needZoneUpdate = needUpdate; }
 
     void UpdateZoneDependentAuras(uint32 zone_id);    // zones
