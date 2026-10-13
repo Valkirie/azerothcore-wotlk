@@ -5,7 +5,7 @@ DELETE FROM `creature_template_model` WHERE `CreatureID` = 500000;
 DELETE FROM `creature_template` WHERE `entry` = 500000;
 
 INSERT INTO `creature_template` (`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`, `unit_flags`, `unit_class`, `type`, `ScriptName`, `VerifiedBuild`) VALUES
-(500000, 'Black Market Representative', 'Item Rescaling', 80, 80, 35, 1, 2, 1, 7, 'npc_black_market', 0);
+(500000, 'Black Market Representative', 'Item Rescaling', 80, 80, 7, 1, 2, 1, 7, 'npc_black_market', 0);
 
 INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES
 (500000, 0, 7355, 1, 1, 0);
