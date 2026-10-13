@@ -91,9 +91,6 @@ enum PetLoadState
 
 enum NPCEntries
 {
-    // Hunter
-    NPC_HUNTER_PET_VEHICLE_PROXY = 25006,
-
     // Warlock
     NPC_INFERNAL                = 89,
     NPC_IMP                     = 416,

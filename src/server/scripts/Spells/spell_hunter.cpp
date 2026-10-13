@@ -797,7 +797,7 @@ class spell_hun_pet_heart_of_the_phoenix : public SpellScript
 
     bool Load() override
     {
-        if (!GetCaster()->IsPet() && GetCaster()->GetEntry() != NPC_HUNTER_PET_VEHICLE_PROXY)
+        if (!GetCaster()->IsPet())
             return false;
         return true;
     }
@@ -1344,7 +1344,7 @@ class spell_hun_target_self_and_pet : public SpellScript
 
     bool Load() override
     {
-        return GetCaster()->IsPet() || GetCaster()->GetEntry() == NPC_HUNTER_PET_VEHICLE_PROXY;
+        return GetCaster()->IsPet();
     }
 
     void FilterTargets(std::list<WorldObject*>& targets)

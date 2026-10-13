@@ -494,7 +494,6 @@ bool Pet::LoadPetFromDB(Player* owner, uint32 petEntry, uint32 petnumber, bool c
         // must be after SetMinion (owner guid check)
         LoadTemplateImmunities(0);
         //LoadMechanicTemplateImmunity();
-        owner->ApplyPendingPetProxyState(this);
         m_loading = false;
     });
 
@@ -2288,33 +2287,6 @@ void Pet::ToggleAutocast(SpellInfo const* spellInfo, bool apply)
                     itr->second.state = PETSPELL_CHANGED;
             }
         }
-    }
-}
-
-bool Pet::IsGroundHunterPet() const
-{
-    if (getPetType() != HUNTER_PET)
-        return false;
-
-    CreatureTemplate const* creatureTemplate = GetCreatureTemplate();
-    if (!creatureTemplate)
-        return false;
-
-    switch (creatureTemplate->family)
-    {
-        case CREATURE_FAMILY_BAT:
-        case CREATURE_FAMILY_BIRD_OF_PREY:
-        case CREATURE_FAMILY_CARRION_BIRD:
-        case CREATURE_FAMILY_CHIMAERA:
-        case CREATURE_FAMILY_DRAGONHAWK:
-        case CREATURE_FAMILY_MOTH:
-        case CREATURE_FAMILY_NETHER_RAY:
-        case CREATURE_FAMILY_SPOREBAT:
-        case CREATURE_FAMILY_WASP:
-        case CREATURE_FAMILY_WIND_SERPENT:
-            return false;
-        default:
-            return true;
     }
 }
 

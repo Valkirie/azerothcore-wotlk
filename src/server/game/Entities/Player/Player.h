@@ -2467,9 +2467,6 @@ public:
     void SetTemporaryUnsummonedPetNumber(uint32 petnumber) { m_temporaryUnsummonedPetNumber = petnumber; }
     void UnsummonPetTemporaryIfAny();
     void ResummonPetTemporaryUnSummonedIfAny();
-    void SetPendingPetProxyState(uint32 petNumber, uint32 health, uint32 focus, Position const& position,
-        ThreatManager::Snapshot&& threat, CreatureSpellCooldowns&& cooldowns);
-    void ApplyPendingPetProxyState(Pet* pet);
     [[nodiscard]] bool IsPetNeedBeTemporaryUnsummoned() const { return GetSession()->PlayerLogout() || !IsInWorld() || !IsAlive() || IsMounted()/*+in flight*/ || GetVehicle() || IsBeingTeleported(); }
     bool CanResummonPet(uint32 spellid);
 
@@ -3061,16 +3058,6 @@ private:
     // Temporary removed pet cache
     uint32 m_temporaryUnsummonedPetNumber;
     uint32 m_oldpetspell;
-    struct PendingPetProxyState
-    {
-        uint32 PetNumber;
-        uint32 Health;
-        uint32 Focus;
-        Position PetPosition;
-        ThreatManager::Snapshot Threat;
-        CreatureSpellCooldowns Cooldowns;
-    };
-    std::optional<PendingPetProxyState> m_pendingPetProxyState;
 
     AchievementMgr* m_achievementMgr;
     ReputationMgr*  m_reputationMgr;
