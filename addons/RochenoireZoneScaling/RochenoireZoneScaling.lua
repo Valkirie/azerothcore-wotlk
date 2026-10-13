@@ -16,6 +16,11 @@ local zonePositions = {}
 local mapLabels = {}
 local mapLabelLayer
 local zoneMapLabel
+local areaMapLabel
+local currentAreaName
+local currentAreaMinimum
+local currentAreaMaximum
+local RefreshMapLabels
 local scanningMap = false
 
 local frame = CreateFrame("Frame", "RochenoireZoneScalingFrame", UIParent)
@@ -58,10 +63,16 @@ rangeText:SetWidth(220)
 rangeText:SetJustifyH("CENTER")
 
 local function UpdateDisplay(zoneName, minimum, maximum)
+    currentAreaName = zoneName
+    currentAreaMinimum = minimum
+    currentAreaMaximum = maximum
     zoneText:SetText(zoneName)
     rangeText:SetText(string.format(L.LEVELS, minimum, maximum))
     rangeText:SetTextColor(1, 1, 1)
     frame:Show()
+    if RefreshMapLabels then
+        RefreshMapLabels()
+    end
 end
 
 local function ApplySavedPosition()
@@ -104,6 +115,9 @@ local function HideMapLabels()
     if zoneMapLabel then
         zoneMapLabel:Hide()
     end
+    if areaMapLabel then
+        areaMapLabel:Hide()
+    end
 end
 
 local function DiscoverZonePositions(continent)
@@ -134,7 +148,7 @@ local function DiscoverZonePositions(continent)
     return positions
 end
 
-local function RefreshMapLabels()
+RefreshMapLabels = function()
     if scanningMap or not WorldMapFrame or not WorldMapFrame:IsShown() then
         return
     end
@@ -173,6 +187,20 @@ local function RefreshMapLabels()
             end
             zoneMapLabel:SetText(string.format("%s (%d-%d)", zoneName, range.minimum, range.maximum))
             zoneMapLabel:Show()
+
+            if currentAreaName and currentAreaName ~= zoneName and currentAreaMinimum and currentAreaMaximum then
+                if not areaMapLabel then
+                    areaMapLabel = mapLabelLayer:CreateFontString(nil, "OVERLAY")
+                    local font = GameFontNormal:GetFont()
+                    areaMapLabel:SetFont(font, 14, "OUTLINE")
+                    areaMapLabel:SetTextColor(1, 1, 1)
+                    areaMapLabel:SetShadowColor(0, 0, 0, 1)
+                    areaMapLabel:SetShadowOffset(1, -1)
+                    areaMapLabel:SetPoint("TOP", zoneMapLabel, "BOTTOM", 0, -4)
+                end
+                areaMapLabel:SetText(string.format("%s (%d-%d)", currentAreaName, currentAreaMinimum, currentAreaMaximum))
+                areaMapLabel:Show()
+            end
         end
         return
     end
@@ -250,7 +278,11 @@ local function HandleMessage(message)
     end
 
     if values[2] == "clear" then
+        currentAreaName = nil
+        currentAreaMinimum = nil
+        currentAreaMaximum = nil
         frame:Hide()
+        HideMapLabels()
         return
     end
 
