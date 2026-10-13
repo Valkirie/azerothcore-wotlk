@@ -2008,7 +2008,7 @@ enum BlackMarketPhase
     BLACK_MARKET_PHASE_RETURNING
 };
 
-constexpr float BLACK_MARKET_MAILBOX_SEARCH_RANGE = 100.0f;
+constexpr float BLACK_MARKET_MAILBOX_SEARCH_RANGE = 130.0f;
 
 class npc_black_market : public CreatureScript
 {
