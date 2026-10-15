@@ -117,17 +117,25 @@ foreach(TOOL_NAME ${TOOLS_BUILD_LIST})
   #   PRIVATE
   #     acore-dependency-interface)
 
-  if (${TOOL_PROJECT_NAME} MATCHES "dbimport")
+  if (${TOOL_PROJECT_NAME} MATCHES "dbimport|instance_pack_generator")
     target_link_libraries(${TOOL_PROJECT_NAME}
       PUBLIC
         database
+        common
       PRIVATE
-        modules
-        scripts
         acore-core-interface)
 
+    if (${TOOL_PROJECT_NAME} MATCHES "dbimport")
+      target_link_libraries(${TOOL_PROJECT_NAME}
+        PRIVATE
+          modules
+          scripts)
+    endif()
+
     # Install config
-    CopyToolConfig(${TOOL_PROJECT_NAME} ${TOOL_NAME})
+    if (${TOOL_PROJECT_NAME} MATCHES "dbimport")
+      CopyToolConfig(${TOOL_PROJECT_NAME} ${TOOL_NAME})
+    endif()
   else()
 
     target_link_libraries(${TOOL_PROJECT_NAME}
@@ -159,7 +167,8 @@ foreach(TOOL_NAME ${TOOLS_BUILD_LIST})
       ${CMAKE_SOURCE_DIR}/src
       ${CMAKE_SOURCE_DIR}/modules
     PRIVATE
-      ${CMAKE_CURRENT_BINARY_DIR}/${TOOL_NAME})
+      ${CMAKE_CURRENT_BINARY_DIR}/${TOOL_NAME}
+      ${CMAKE_SOURCE_DIR}/src/server/game/Grids)
 
   set_target_properties(${TOOL_PROJECT_NAME}
     PROPERTIES
