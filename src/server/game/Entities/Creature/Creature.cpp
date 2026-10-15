@@ -235,6 +235,7 @@ bool AssistDelayEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
                     assistant->SetLastLeashExtensionTimePtr(m_owner->GetLastLeashExtensionTimePtr());
             }
         }
+
     }
     return true;
 }
@@ -1583,6 +1584,75 @@ void Creature::RefreshLevelVariation()
         SetLevelVar(*levelVar);
 
     ForceLevelScalingUpdate();
+}
+
+void Creature::SetSuppressedByInstanceScaling(bool suppressed)
+{
+    if (_suppressedByInstanceScaling == suppressed)
+        return;
+
+    _suppressedByInstanceScaling = suppressed;
+    if (suppressed)
+    {
+        _instanceScalingOriginalReactState = GetReactState();
+        CombatStop();
+        SetReactState(REACT_PASSIVE);
+        SetVisible(false);
+    }
+    else
+    {
+        SetReactState(_instanceScalingOriginalReactState);
+        SetVisible(true);
+    }
+}
+
+void Creature::ApplyInstanceScaling(float healthMultiplier, float damageMultiplier, float attackSpeedMultiplier)
+{
+    healthMultiplier = std::max(healthMultiplier, 0.01f);
+    damageMultiplier = std::max(damageMultiplier, 0.01f);
+    attackSpeedMultiplier = std::max(attackSpeedMultiplier, 0.01f);
+
+    if (!_hasInstanceScalingBaseStats)
+    {
+        _instanceScalingBaseHealth = GetMaxHealth();
+        for (uint8 power = 0; power < MAX_POWERS; ++power)
+            _instanceScalingBasePower[power] = GetMaxPower(Powers(power));
+
+        for (uint8 attack = 0; attack < MAX_ATTACK; ++attack)
+        {
+            WeaponAttackType attackType = WeaponAttackType(attack);
+            _instanceScalingBaseAttackTime[attack] = GetAttackTime(attackType);
+            _instanceScalingBaseWeaponDamage[attack][MINDAMAGE] = GetWeaponDamageRange(attackType, MINDAMAGE);
+            _instanceScalingBaseWeaponDamage[attack][MAXDAMAGE] = GetWeaponDamageRange(attackType, MAXDAMAGE);
+        }
+
+        _hasInstanceScalingBaseStats = true;
+    }
+
+    float healthPercentage = GetMaxHealth() ? float(GetHealth()) / GetMaxHealth() : 0.0f;
+    uint32 scaledMaximumHealth = std::max<uint32>(1, uint32(std::lround(_instanceScalingBaseHealth * healthMultiplier)));
+    SetMaxHealth(scaledMaximumHealth);
+    SetHealth(IsAlive() ? std::max<uint32>(1, uint32(std::lround(scaledMaximumHealth * healthPercentage))) : 0);
+
+    for (uint8 power = 0; power < MAX_POWERS; ++power)
+    {
+        Powers powerType = Powers(power);
+        uint32 currentMaximumPower = GetMaxPower(powerType);
+        float powerPercentage = currentMaximumPower ? float(GetPower(powerType)) / currentMaximumPower : 0.0f;
+        uint32 scaledMaximumPower = uint32(std::lround(_instanceScalingBasePower[power] * healthMultiplier));
+        SetMaxPower(powerType, scaledMaximumPower);
+        SetPower(powerType, uint32(std::lround(scaledMaximumPower * powerPercentage)));
+    }
+
+    for (uint8 attack = 0; attack < MAX_ATTACK; ++attack)
+    {
+        WeaponAttackType attackType = WeaponAttackType(attack);
+        SetBaseWeaponDamage(attackType, MINDAMAGE, _instanceScalingBaseWeaponDamage[attack][MINDAMAGE] * damageMultiplier);
+        SetBaseWeaponDamage(attackType, MAXDAMAGE, _instanceScalingBaseWeaponDamage[attack][MAXDAMAGE] * damageMultiplier);
+        SetAttackTime(attackType, uint32(std::lround(_instanceScalingBaseAttackTime[attack] / attackSpeedMultiplier)));
+    }
+
+    _instanceScalingSpellMultiplier = damageMultiplier * attackSpeedMultiplier;
 }
 
 float Creature::_GetHealthMod(int32 Rank)

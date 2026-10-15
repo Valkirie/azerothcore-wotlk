@@ -28,6 +28,7 @@
 #include "Guild.h"
 #include "InstanceScript.h"
 #include "Language.h"
+#include "Map.h"
 #include "OutdoorPvPMgr.h"
 #include "Pet.h"
 #include "Player.h"
@@ -1304,6 +1305,7 @@ void Player::UpdateArea(uint32 newArea)
     addonPacket << addonMessage;
     addonPacket << uint8(0);
     SendDirectMessage(&addonPacket);
+    SendInstanceScalingUpdate();
 }
 
 void Player::SendZoneScalingCatalog() const
@@ -1365,6 +1367,27 @@ void Player::SendZoneScalingCatalog() const
     if (data.size() > dataPrefix.size())
         sendAddonMessage(data);
     sendAddonMessage("v2:catalog:done");
+}
+
+void Player::SendInstanceScalingUpdate() const
+{
+    std::string addonMessage = "RZScale\t";
+    InstanceMap const* instanceMap = GetMap() ? GetMap()->ToInstanceMap() : nullptr;
+    if (instanceMap && instanceMap->HasInstanceScaling())
+        addonMessage += "v2:instance:" + std::to_string(instanceMap->GetInstanceScalingDifficultyPercentage());
+    else
+        addonMessage += "v2:instance:clear";
+
+    WorldPacket addonPacket(SMSG_MESSAGECHAT, 1 + 4 + 8 + 4 + 8 + 4 + addonMessage.size() + 2);
+    addonPacket << uint8(CHAT_MSG_WHISPER);
+    addonPacket << uint32(LANG_ADDON);
+    addonPacket << uint64(0);
+    addonPacket << uint32(0);
+    addonPacket << uint64(0);
+    addonPacket << uint32(addonMessage.size() + 1);
+    addonPacket << addonMessage;
+    addonPacket << uint8(0);
+    SendDirectMessage(&addonPacket);
 }
 
 void Player::UpdateZone(uint32 newZone, uint32 newArea, bool force)

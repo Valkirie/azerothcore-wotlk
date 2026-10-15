@@ -578,6 +578,8 @@ public:
 private:
 
     template<class T> void InitializeObject(T* obj);
+    virtual void OnCreatureAddedToMap(Creature*) { }
+    virtual void OnCreatureRemovedFromMap(Creature*) { }
     void AddCreatureToMoveList(Creature* c);
     void RemoveCreatureFromMoveList(Creature* c);
     void AddGameObjectToMoveList(GameObject* go);
@@ -745,16 +747,37 @@ public:
 
     [[nodiscard]] uint32 GetMaxPlayers() const;
     [[nodiscard]] uint32 GetMaxResetDelay() const;
+    [[nodiscard]] bool HasInstanceScaling() const { return _instanceScalingState.enabled; }
+    [[nodiscard]] uint8 GetEffectiveInstancePlayerCount() const { return _instanceScalingState.effectivePlayerCount; }
+    [[nodiscard]] uint32 GetInstanceScalingDifficultyPercentage() const;
+    [[nodiscard]] bool IsInstanceScalingRefreshPending() const { return _instanceScalingState.refreshPending; }
 
     void InitVisibilityDistance() override;
 
     std::string GetDebugInfo() const override;
 
 private:
+    struct InstanceScalingState
+    {
+        bool enabled = false;
+        bool refreshPending = false;
+        uint8 effectivePlayerCount = 0;
+        uint8 pendingPlayerCount = 0;
+    };
+
+    void QueueInstanceScalingRefresh();
+    void ApplyPendingInstanceScaling();
+    void OnCreatureAddedToMap(Creature* creature) override;
+    void OnCreatureRemovedFromMap(Creature* creature) override;
+    void RefreshInstanceScalingSpawnGroups();
+    [[nodiscard]] bool IsEncounterInProgress() const;
+
     bool m_resetAfterUnload;
     bool m_unloadWhenEmpty;
     InstanceScript* instance_data;
     uint32 i_script_id;
+    InstanceScalingState _instanceScalingState;
+    std::unordered_map<ObjectGuid::LowType, Creature*> _instanceScalingCreatures;
 };
 
 class BattlegroundMap : public Map

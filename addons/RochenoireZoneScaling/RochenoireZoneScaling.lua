@@ -3,10 +3,12 @@ local VERSION = "v1"
 local LOCALIZED = {
     enUS = {
         LEVELS = "Levels %d-%d",
+        DIFFICULTY = "Difficulty",
         WAITING = "Waiting for zone scaling data...",
     },
     frFR = {
         LEVELS = "Niveaux %d-%d",
+        DIFFICULTY = "Difficulté",
         WAITING = "En attente des données de mise à niveau...",
     },
 }
@@ -62,10 +64,43 @@ rangeText:SetPoint("TOP", zoneText, "BOTTOM", 0, -3)
 rangeText:SetWidth(220)
 rangeText:SetJustifyH("CENTER")
 
+local difficultyBar = CreateFrame("StatusBar", nil, frame)
+difficultyBar:SetPoint("TOP", rangeText, "BOTTOM", 0, -6)
+difficultyBar:SetWidth(200)
+difficultyBar:SetHeight(14)
+difficultyBar:SetMinMaxValues(0, 100)
+difficultyBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+
+local difficultyBackground = difficultyBar:CreateTexture(nil, "BACKGROUND")
+difficultyBackground:SetAllPoints(difficultyBar)
+difficultyBackground:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+difficultyBackground:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+
+local difficultyText = difficultyBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+difficultyText:SetPoint("CENTER")
+difficultyText:SetText(L.DIFFICULTY)
+difficultyText:SetTextColor(1, 1, 1)
+difficultyBar:Hide()
+
+local function UpdateDifficulty(difficulty)
+    if difficulty then
+        local value = math.max(0, math.min(100, difficulty))
+        local red = value / 100
+        difficultyBar:SetValue(value)
+        difficultyBar:SetStatusBarColor(red, 1 - red, 0)
+        difficultyBar:Show()
+        frame:SetHeight(86)
+    else
+        difficultyBar:Hide()
+        frame:SetHeight(64)
+    end
+end
+
 local function UpdateDisplay(zoneName, minimum, maximum)
     currentAreaName = zoneName
     currentAreaMinimum = minimum
     currentAreaMaximum = maximum
+    UpdateDifficulty(nil)
     zoneText:SetText(zoneName)
     rangeText:SetText(string.format(L.LEVELS, minimum, maximum))
     rangeText:SetTextColor(1, 1, 1)
@@ -259,12 +294,31 @@ local function HandleCatalogMessage(message)
     return false
 end
 
+local function HandleInstanceMessage(message)
+    if message == "v2:instance:clear" then
+        UpdateDifficulty(nil)
+        return true
+    end
+
+    local difficulty = tonumber(string.match(message, "^v2:instance:(%d+)$"))
+    if difficulty then
+        UpdateDifficulty(difficulty)
+        return true
+    end
+
+    return false
+end
+
 local function HandleMessage(message)
     if type(message) ~= "string" then
         return
     end
 
     if HandleCatalogMessage(message) then
+        return
+    end
+
+    if HandleInstanceMessage(message) then
         return
     end
 
@@ -281,6 +335,7 @@ local function HandleMessage(message)
         currentAreaName = nil
         currentAreaMinimum = nil
         currentAreaMaximum = nil
+        UpdateDifficulty(nil)
         frame:Hide()
         HideMapLabels()
         return

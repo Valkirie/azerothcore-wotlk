@@ -345,6 +345,9 @@ bool Map::AddToMap(T* obj, bool checkTransport)
 
     InitializeObject(obj);
 
+    if (obj->IsCreature())
+        OnCreatureAddedToMap(obj->ToCreature());
+
     //something, such as vehicle, needs to be update immediately
     //also, trigger needs to cast spell, if not update, cannot see visual
     obj->UpdateObjectVisibilityOnCreate();
@@ -744,6 +747,9 @@ void Map::AfterPlayerUnlinkFromMap()
 template<class T>
 void Map::RemoveFromMap(T* obj, bool remove)
 {
+    if (obj->IsCreature())
+        OnCreatureRemovedFromMap(obj->ToCreature());
+
     obj->RemoveFromWorld();
 
     obj->RemoveFromGrid();
@@ -1948,6 +1954,8 @@ InstanceMap::InstanceMap(uint32 id, uint32 InstanceId, uint8 SpawnMode, Map* _pa
       m_resetAfterUnload(false), m_unloadWhenEmpty(false),
       instance_data(nullptr), i_script_id(0)
 {
+    _instanceScalingState.enabled = sObjectMgr->GetInstanceScalingConfig(id) != nullptr;
+
     //lets initialize visibility distance for dungeons
     InstanceMap::InitVisibilityDistance();
 
@@ -2149,6 +2157,8 @@ bool InstanceMap::AddPlayerToMap(Player* player)
     if (instance_data)
         instance_data->OnPlayerEnter(player);
 
+    QueueInstanceScalingRefresh();
+
     return true;
 }
 
@@ -2159,6 +2169,9 @@ void InstanceMap::Update(const uint32 t_diff, const uint32 s_diff, bool /*thread
     if (t_diff)
         if (instance_data)
             instance_data->Update(t_diff);
+
+    if (_instanceScalingState.refreshPending && Rochenoire::InstanceScaling::ShouldApplyPendingPlayerCount(_instanceScalingState.effectivePlayerCount, _instanceScalingState.pendingPlayerCount, IsEncounterInProgress()))
+        ApplyPendingInstanceScaling();
 }
 
 void InstanceMap::RemovePlayerFromMap(Player* player, bool remove)
@@ -2179,7 +2192,125 @@ void InstanceMap::AfterPlayerUnlinkFromMap()
 {
     if (!m_unloadTimer && !HavePlayers())
         m_unloadTimer = m_unloadWhenEmpty ? MIN_UNLOAD_DELAY : std::max(sWorld->getIntConfig(CONFIG_INSTANCE_UNLOAD_DELAY), (uint32)MIN_UNLOAD_DELAY);
+
+    QueueInstanceScalingRefresh();
     Map::AfterPlayerUnlinkFromMap();
+}
+
+bool InstanceMap::IsEncounterInProgress() const
+{
+    return instance_data && instance_data->IsEncounterInProgress();
+}
+
+uint32 InstanceMap::GetInstanceScalingDifficultyPercentage() const
+{
+    ZoneFlex const* instanceConfig = sObjectMgr->GetInstanceScalingConfig(GetId());
+    if (!instanceConfig)
+        return 100;
+
+    InstanceCreatureScalingPolicy defaultPolicy;
+    InstanceScalingMultipliers multipliers = Rochenoire::InstanceScaling::CalculateMultipliers(*instanceConfig, defaultPolicy, _instanceScalingState.effectivePlayerCount);
+    return Rochenoire::InstanceScaling::CalculateDifficultyPercentage(multipliers);
+}
+
+void InstanceMap::QueueInstanceScalingRefresh()
+{
+    if (!_instanceScalingState.enabled)
+        return;
+
+    ZoneFlex const* instanceConfig = sObjectMgr->GetInstanceScalingConfig(GetId());
+    if (!instanceConfig)
+    {
+        _instanceScalingState = {};
+        return;
+    }
+
+    _instanceScalingState.pendingPlayerCount = Rochenoire::InstanceScaling::ClampPlayerCount(*instanceConfig, GetPlayersCountExceptGMs());
+    _instanceScalingState.refreshPending = _instanceScalingState.pendingPlayerCount != _instanceScalingState.effectivePlayerCount;
+
+    if (_instanceScalingState.refreshPending && Rochenoire::InstanceScaling::ShouldApplyPendingPlayerCount(_instanceScalingState.effectivePlayerCount, _instanceScalingState.pendingPlayerCount, IsEncounterInProgress()))
+        ApplyPendingInstanceScaling();
+}
+
+void InstanceMap::ApplyPendingInstanceScaling()
+{
+    if (!_instanceScalingState.enabled || !_instanceScalingState.refreshPending || IsEncounterInProgress())
+        return;
+
+    uint8 previousPlayerCount = _instanceScalingState.effectivePlayerCount;
+    _instanceScalingState.effectivePlayerCount = _instanceScalingState.pendingPlayerCount;
+    _instanceScalingState.refreshPending = false;
+    RefreshInstanceScalingSpawnGroups();
+
+    if (previousPlayerCount && previousPlayerCount != _instanceScalingState.effectivePlayerCount)
+    {
+        uint32 notification = _instanceScalingState.effectivePlayerCount > previousPlayerCount
+            ? LANG_INSTANCE_SCALING_INCREASED
+            : LANG_INSTANCE_SCALING_DECREASED;
+
+        for (MapRefMgr::iterator itr = m_mapRefMgr.begin(); itr != m_mapRefMgr.end(); ++itr)
+        {
+            Player* player = itr->GetSource();
+            if (player && player->GetSession())
+            {
+                ChatHandler(player->GetSession()).SendNotification(notification, GetMapName(), _instanceScalingState.effectivePlayerCount);
+                player->SendInstanceScalingUpdate();
+            }
+        }
+    }
+}
+
+void InstanceMap::OnCreatureAddedToMap(Creature* creature)
+{
+    if (!_instanceScalingState.enabled || !creature || !creature->GetSpawnId() || creature->IsSummon())
+        return;
+
+    _instanceScalingCreatures[creature->GetSpawnId()] = creature;
+    RefreshInstanceScalingSpawnGroups();
+}
+
+void InstanceMap::OnCreatureRemovedFromMap(Creature* creature)
+{
+    if (!creature || !creature->GetSpawnId())
+        return;
+
+    _instanceScalingCreatures.erase(creature->GetSpawnId());
+}
+
+void InstanceMap::RefreshInstanceScalingSpawnGroups()
+{
+    if (!_instanceScalingState.enabled)
+        return;
+
+    ZoneFlex const* instanceConfig = sObjectMgr->GetInstanceScalingConfig(GetId());
+    if (!instanceConfig)
+        return;
+
+    InstanceCreatureScalingPolicy defaultPolicy;
+
+    for (auto const& [spawnId, creature] : _instanceScalingCreatures)
+    {
+        InstanceCreatureScalingPolicy const* configuredPolicy = sObjectMgr->GetInstanceCreatureScalingPolicy(GetId(), creature->GetEntry());
+        InstanceCreatureScalingPolicy const& policy = configuredPolicy ? *configuredPolicy : defaultPolicy;
+        InstanceScalingMultipliers multipliers = Rochenoire::InstanceScaling::CalculateMultipliers(*instanceConfig, policy, _instanceScalingState.effectivePlayerCount);
+        float packDamageCompensation = 1.0f;
+
+        InstanceScalingSpawnGroupMember const* member = sObjectMgr->GetInstanceScalingSpawnGroupMember(spawnId);
+        if (!member || member->mapId != GetId())
+        {
+            creature->SetSuppressedByInstanceScaling(false);
+        }
+        else
+        {
+            uint32 configuredGroupSize = sObjectMgr->GetInstanceScalingSpawnGroupSize(GetId(), member->scalingGroupId);
+            uint32 activeCreatureCount = Rochenoire::InstanceScaling::CalculateActiveCreatureCount(configuredGroupSize, multipliers.health, policy.minimumRetainedCreatureHealthMultiplier);
+            creature->SetSuppressedByInstanceScaling(member->activationRank >= activeCreatureCount);
+            if (activeCreatureCount)
+                packDamageCompensation = float(configuredGroupSize) / activeCreatureCount;
+        }
+
+        creature->ApplyInstanceScaling(multipliers.health, multipliers.damage * packDamageCompensation, multipliers.attackSpeed);
+    }
 }
 
 void InstanceMap::CreateInstanceScript(bool load, std::string data, uint32 completedEncounterMask)

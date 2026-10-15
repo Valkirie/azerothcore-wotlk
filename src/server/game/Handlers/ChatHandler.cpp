@@ -291,6 +291,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket& recvData)
     if (type == CHAT_MSG_WHISPER && lang == LANG_ADDON && msg == "RZScale\tv2:catalog")
     {
         sender->SendZoneScalingCatalog();
+        sender->SendInstanceScalingUpdate();
         return;
     }
 

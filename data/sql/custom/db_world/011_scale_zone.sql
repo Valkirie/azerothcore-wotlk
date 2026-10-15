@@ -2,8 +2,9 @@
 --
 -- Rebuilds the area configuration consumed by the zone-scaling system. Each
 -- row defines a zone's map, area flags, and optional minimum and maximum level
--- range used when calculating scaled content. The comments column is normalized
--- after insertion to list the AreaFlags represented by each numeric value.
+-- range used when calculating scaled content. Instance rows can additionally
+-- define supported player-count bounds and the expected number of tanks. The
+-- comments column is normalized after insertion to list represented AreaFlags.
 
 DROP TABLE IF EXISTS `rochenoire_scale_zone`;
 
@@ -14,11 +15,14 @@ CREATE TABLE `rochenoire_scale_zone` (
   `LevelRangeMin` int DEFAULT NULL,
   `LevelRangeMax` int DEFAULT NULL,
   `areaFlags` int unsigned NOT NULL DEFAULT '0',
+  `minimumPlayers` tinyint unsigned NOT NULL DEFAULT '0',
+  `maximumPlayers` tinyint unsigned NOT NULL DEFAULT '0',
+  `requiredTankCount` tinyint unsigned NOT NULL DEFAULT '0',
   `comments` varchar(512) DEFAULT NULL,
   PRIMARY KEY (`areaId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-insert  into `rochenoire_scale_zone`(`areaName`,`mapId`,`areaId`,`LevelRangeMin`,`LevelRangeMax`,`areaFlags`,`comments`) values 
+INSERT INTO `rochenoire_scale_zone`(`areaName`,`mapId`,`areaId`,`LevelRangeMin`,`LevelRangeMax`,`areaFlags`,`comments`) VALUES 
 ('Dun Morogh',0,1,1,20,65,NULL),
 ('Badlands',0,3,40,60,64,NULL),
 ('Blasted Lands',0,4,40,60,64,NULL),
@@ -205,6 +209,28 @@ insert  into `rochenoire_scale_zone`(`areaName`,`mapId`,`areaId`,`LevelRangeMin`
 ('Gundrak',604,4416,64,80,0,NULL),
 ('Ahn\'kahet: The Old Kingdom',619,4494,61,80,33570816,NULL),
 ('Hrothgar\'s Landing',571,4742,67,80,1093,NULL);
+
+UPDATE `rochenoire_scale_zone`
+SET `minimumPlayers` = 3, `maximumPlayers` = 5, `requiredTankCount` = 1
+WHERE `mapId` IN (33,34,36,43,47,48,70,90,109,129,189,209,230,269,289,329,349,389,
+                  540,542,543,545,546,547,552,553,554,555,556,557,558,560,585,
+                  576,578,600,601,604,608,619);
+
+UPDATE `rochenoire_scale_zone`
+SET `minimumPlayers` = 5, `maximumPlayers` = 10, `requiredTankCount` = 2
+WHERE `mapId` IN (532,568);
+
+UPDATE `rochenoire_scale_zone`
+SET `minimumPlayers` = 5, `maximumPlayers` = 20, `requiredTankCount` = 2
+WHERE `mapId` IN (309,509);
+
+UPDATE `rochenoire_scale_zone`
+SET `minimumPlayers` = 10, `maximumPlayers` = 25, `requiredTankCount` = 2
+WHERE `mapId` IN (533,534,544,548,550,564,565,580);
+
+UPDATE `rochenoire_scale_zone`
+SET `minimumPlayers` = 10, `maximumPlayers` = 40, `requiredTankCount` = 2
+WHERE `mapId` IN (249,409,469,531);
 
 UPDATE `rochenoire_scale_zone`
 SET `comments` = CASE

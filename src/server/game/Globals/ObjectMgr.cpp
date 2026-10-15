@@ -54,6 +54,7 @@
 #include "Vehicle.h"
 #include "World.h"
 #include <boost/algorithm/string.hpp>
+#include <cmath>
 #include <numeric>
 
 #include "ItemEnchantmentMgr.h"
@@ -64,6 +65,35 @@ ScriptMapMap sWaypointScripts;
 
 namespace
 {
+    constexpr float InstanceHealerToDamageDealerRatio = 0.2f;
+    constexpr float InstanceRoleTransitionSoftness = 100.0f;
+
+    float EstimateTankHealers(float maximumPlayers, float currentPlayers, float requiredTanks)
+    {
+        return requiredTanks
+            + 1.0f / (std::exp((0.7375f * maximumPlayers - currentPlayers) / InstanceRoleTransitionSoftness * 100.0f) + 1.0f)
+            + 1.0f / (std::exp((0.5125f * maximumPlayers - currentPlayers) / InstanceRoleTransitionSoftness * 100.0f) + 1.0f);
+    }
+
+    float EstimateDamageDealers(float maximumPlayers, float currentPlayers, float requiredTanks)
+    {
+        float tankHealers = EstimateTankHealers(maximumPlayers, currentPlayers, requiredTanks);
+        return std::max(1.0f, currentPlayers - tankHealers - requiredTanks) / (1.0f + InstanceHealerToDamageDealerRatio);
+    }
+
+    float EstimateRaidHealers(float maximumPlayers, float currentPlayers, float requiredTanks)
+    {
+        if (maximumPlayers == 5.0f)
+        {
+            maximumPlayers *= 2.0f;
+            currentPlayers *= 2.0f;
+        }
+
+        float tankHealers = EstimateTankHealers(maximumPlayers, currentPlayers, requiredTanks);
+        float damageDealers = EstimateDamageDealers(maximumPlayers, currentPlayers, requiredTanks);
+        return currentPlayers - tankHealers - requiredTanks - damageDealers;
+    }
+
     bool IsApprenticeRidingMailTemplate(uint32 mailTemplateId)
     {
         // Riding Training Pamphlet
@@ -83,6 +113,7 @@ namespace
             default:
                 return false;
         }
+
     }
 
     bool IsFirstTierClassMountQuest(uint32 questId)
@@ -164,6 +195,82 @@ namespace
                 break;
         }
     }
+}
+
+namespace Rochenoire
+{
+namespace InstanceScaling
+{
+uint8 ClampPlayerCount(ZoneFlex const& instanceConfig, uint32 playerCount)
+{
+    if (!instanceConfig.HasInstanceScaling())
+        return 0;
+
+    return uint8(std::clamp(playerCount, uint32(instanceConfig.minimumPlayers), uint32(instanceConfig.maximumPlayers)));
+}
+
+InstanceScalingMultipliers CalculateMultipliers(ZoneFlex const& instanceConfig, InstanceCreatureScalingPolicy const& creaturePolicy, uint32 playerCount)
+{
+    InstanceScalingMultipliers result;
+    result.effectivePlayerCount = ClampPlayerCount(instanceConfig, playerCount);
+    if (!result.effectivePlayerCount)
+        return result;
+
+    float maximumPlayers = float(instanceConfig.maximumPlayers);
+    float currentPlayers = float(result.effectivePlayerCount);
+    float requiredTanks = float(creaturePolicy.requiredTankCountOverride ? creaturePolicy.requiredTankCountOverride : instanceConfig.requiredTankCount);
+    requiredTanks = std::max(1.0f, requiredTanks);
+
+    float maximumDamageDealers = EstimateDamageDealers(maximumPlayers, maximumPlayers, requiredTanks);
+    float currentDamageDealers = EstimateDamageDealers(maximumPlayers, currentPlayers, requiredTanks);
+    float healthRatio = maximumDamageDealers > 0.0f ? currentDamageDealers / maximumDamageDealers : 1.0f;
+
+    float maximumTankHealers = EstimateTankHealers(maximumPlayers, maximumPlayers, requiredTanks);
+    float currentTankHealers = EstimateTankHealers(maximumPlayers, currentPlayers, requiredTanks);
+    float maximumRaidHealers = EstimateRaidHealers(maximumPlayers, maximumPlayers, requiredTanks);
+    float currentRaidHealers = EstimateRaidHealers(maximumPlayers, currentPlayers, requiredTanks);
+    float maximumHealingCapacity = maximumTankHealers + creaturePolicy.raidDamageWeight * maximumRaidHealers;
+    float currentHealingCapacity = currentTankHealers + creaturePolicy.raidDamageWeight * currentRaidHealers;
+    float damageOutputRatio = maximumHealingCapacity > 0.0f ? currentHealingCapacity / maximumHealingCapacity : 1.0f;
+
+    float minimumDamage = std::clamp(creaturePolicy.minimumCreatureDamageMultiplier, 0.0f, 1.0f);
+    float minimumSizeDamageOutput = EstimateTankHealers(maximumPlayers, instanceConfig.minimumPlayers, requiredTanks)
+        + creaturePolicy.raidDamageWeight * EstimateRaidHealers(maximumPlayers, instanceConfig.minimumPlayers, requiredTanks);
+    float minimumSizeDamageRatio = maximumHealingCapacity > 0.0f ? minimumSizeDamageOutput / maximumHealingCapacity : 1.0f;
+    float damageDenominator = 1.0f - minimumSizeDamageRatio;
+    float damageRatio = damageDenominator > 0.0001f
+        ? 1.0f - (1.0f - minimumDamage) * (1.0f - damageOutputRatio) / damageDenominator
+        : 1.0f;
+
+    result.health = std::max(0.01f, healthRatio);
+    result.damage = std::max(0.01f, damageRatio);
+    result.attackSpeed = std::max(0.01f, damageOutputRatio / std::max(damageRatio, 0.01f));
+    return result;
+}
+
+uint32 CalculateDifficultyPercentage(InstanceScalingMultipliers const& multipliers)
+{
+    return uint32(std::max(1.0f, std::round(multipliers.health * 100.0f)));
+}
+
+uint32 CalculateActiveCreatureCount(uint32 configuredCreatureCount, float healthMultiplier, float minimumRetainedCreatureHealthMultiplier)
+{
+    if (configuredCreatureCount <= 1)
+        return configuredCreatureCount;
+
+    float minimumHealth = std::clamp(minimumRetainedCreatureHealthMultiplier, 0.01f, 1.0f);
+    uint32 activeCreatureCount = configuredCreatureCount;
+    while (activeCreatureCount > 1 && healthMultiplier * configuredCreatureCount / activeCreatureCount < minimumHealth)
+        --activeCreatureCount;
+
+    return activeCreatureCount;
+}
+
+bool ShouldApplyPendingPlayerCount(uint8 effectivePlayerCount, uint8 pendingPlayerCount, bool encounterInProgress)
+{
+    return effectivePlayerCount != pendingPlayerCount && !encounterInProgress;
+}
+}
 }
 
 std::string GetScriptsTableNameByType(ScriptsType type)
@@ -365,6 +472,32 @@ LanguageDesc const* GetLanguageDescByID(uint32 lang)
     }
 
     return nullptr;
+}
+
+ZoneFlex const* ObjectMgr::GetInstanceScalingConfig(uint32 mapId) const
+{
+    InstanceZoneScalingMap::const_iterator itr = mInstanceZoneScalingMap.find(mapId);
+    return itr != mInstanceZoneScalingMap.end() ? &itr->second : nullptr;
+}
+
+InstanceCreatureScalingPolicy const* ObjectMgr::GetInstanceCreatureScalingPolicy(uint32 mapId, uint32 creatureEntry) const
+{
+    uint64 key = uint64(mapId) << 32 | creatureEntry;
+    InstanceCreatureScalingPolicyMap::const_iterator itr = mInstanceCreatureScalingPolicyMap.find(key);
+    return itr != mInstanceCreatureScalingPolicyMap.end() ? &itr->second : nullptr;
+}
+
+InstanceScalingSpawnGroupMember const* ObjectMgr::GetInstanceScalingSpawnGroupMember(uint32 spawnId) const
+{
+    InstanceScalingSpawnGroupMemberMap::const_iterator itr = mInstanceScalingSpawnGroupMemberMap.find(spawnId);
+    return itr != mInstanceScalingSpawnGroupMemberMap.end() ? &itr->second : nullptr;
+}
+
+uint32 ObjectMgr::GetInstanceScalingSpawnGroupSize(uint32 mapId, uint32 scalingGroupId) const
+{
+    uint64 key = uint64(mapId) << 32 | scalingGroupId;
+    InstanceScalingSpawnGroupSizeMap::const_iterator itr = mInstanceScalingSpawnGroupSizeMap.find(key);
+    return itr != mInstanceScalingSpawnGroupSizeMap.end() ? itr->second : 0;
 }
 
 bool SpellClickInfo::IsFitToRequirements(Unit const* clicker, Unit const* clickee) const
@@ -10862,8 +10995,9 @@ void ObjectMgr::LoadZoneScale()
     uint32 oldMSTime = getMSTime();
 
     mZoneFlexMap.clear();
+    mInstanceZoneScalingMap.clear();
     mQuestZoneFlexOverrides.clear();
-    QueryResult result = WorldDatabase.Query("SELECT * FROM rochenoire_scale_zone");
+    QueryResult result = WorldDatabase.Query("SELECT `areaName`, `mapId`, `areaId`, `LevelRangeMin`, `LevelRangeMax`, `areaFlags`, `minimumPlayers`, `maximumPlayers`, `requiredTankCount` FROM `rochenoire_scale_zone`");
 
     if (!result)
     {
@@ -10881,6 +11015,9 @@ void ObjectMgr::LoadZoneScale()
             uint32      LevelRangeMin = fields[3].Get<uint32>();
             uint32      LevelRangeMax = fields[4].Get<uint32>();
             uint32      areaFlags = fields[5].Get<uint32>();
+            uint8       minimumPlayers = fields[6].Get<uint8>();
+            uint8       maximumPlayers = fields[7].Get<uint8>();
+            uint8       requiredTankCount = fields[8].Get<uint8>();
 
             ZoneFlex& data = mZoneFlexMap[areaId];
             data.areaName = areaName;
@@ -10889,11 +11026,25 @@ void ObjectMgr::LoadZoneScale()
             data.LevelRangeMin = LevelRangeMin;
             data.LevelRangeMax = LevelRangeMax;
             data.areaFlags = areaFlags;
+            data.minimumPlayers = minimumPlayers;
+            data.maximumPlayers = maximumPlayers;
+            data.requiredTankCount = requiredTankCount;
+
+            if (data.HasInstanceScaling())
+            {
+                auto [itr, inserted] = mInstanceZoneScalingMap.emplace(mapId, data);
+                if (!inserted && (itr->second.minimumPlayers != minimumPlayers || itr->second.maximumPlayers != maximumPlayers || itr->second.requiredTankCount != requiredTankCount))
+                {
+                    LOG_ERROR("sql.sql", "Map {} has conflicting instance scaling settings in `rochenoire_scale_zone` (areas {} and {}).", mapId, itr->second.areaId, areaId);
+                }
+            }
 
         } while (result->NextRow());
     }
 
     LOG_INFO("server.loading", ">> Loaded {} Zone scaling details in {} ms", (unsigned long)mZoneFlexMap.size(), GetMSTimeDiffToNow(oldMSTime));
+
+    LoadInstanceScaling();
 
     QueryResult questResult = WorldDatabase.Query("SELECT `QuestId`, `SourceAreaId` FROM `rochenoire_scale_quest`");
     if (questResult)
@@ -10915,6 +11066,74 @@ void ObjectMgr::LoadZoneScale()
 
     LOG_INFO("server.loading", ">> Loaded {} Quest source zone overrides in {} ms", (unsigned long)mQuestZoneFlexOverrides.size(), GetMSTimeDiffToNow(oldMSTime));
     LOG_INFO("server.loading", " ");
+}
+
+void ObjectMgr::LoadInstanceScaling()
+{
+    uint32 oldMSTime = getMSTime();
+    mInstanceCreatureScalingPolicyMap.clear();
+    mInstanceScalingSpawnGroupMemberMap.clear();
+    mInstanceScalingSpawnGroupSizeMap.clear();
+
+    QueryResult creatureResult = WorldDatabase.Query("SELECT `creatureEntry`, `mapId`, `requiredTankCountOverride`, `raidDamageWeight`, `minimumCreatureDamageMultiplier`, `minimumRetainedCreatureHealthMultiplier` FROM `rochenoire_scale_instance_creature`");
+    if (creatureResult)
+    {
+        do
+        {
+            Field* fields = creatureResult->Fetch();
+            InstanceCreatureScalingPolicy policy;
+            policy.creatureEntry = fields[0].Get<uint32>();
+            policy.mapId = fields[1].Get<uint32>();
+            policy.requiredTankCountOverride = fields[2].Get<uint8>();
+            policy.raidDamageWeight = std::clamp(fields[3].Get<float>(), 0.0f, 1.0f);
+            policy.minimumCreatureDamageMultiplier = std::clamp(fields[4].Get<float>(), 0.01f, 1.0f);
+            policy.minimumRetainedCreatureHealthMultiplier = std::clamp(fields[5].Get<float>(), 0.01f, 1.0f);
+
+            if (!GetInstanceScalingConfig(policy.mapId))
+            {
+                LOG_ERROR("sql.sql", "Creature {} references map {} without instance settings in `rochenoire_scale_zone`.", policy.creatureEntry, policy.mapId);
+                continue;
+            }
+
+            uint64 key = uint64(policy.mapId) << 32 | policy.creatureEntry;
+            mInstanceCreatureScalingPolicyMap[key] = policy;
+        } while (creatureResult->NextRow());
+    }
+
+    QueryResult groupResult = WorldDatabase.Query("SELECT `spawnId`, `mapId`, `scalingGroupId`, `activationOrder` FROM `rochenoire_scale_instance_spawn_group` ORDER BY `mapId`, `scalingGroupId`, `activationOrder`, `spawnId`");
+    if (groupResult)
+    {
+        uint64 previousGroupKey = std::numeric_limits<uint64>::max();
+        uint16 activationRank = 0;
+        do
+        {
+            Field* fields = groupResult->Fetch();
+            InstanceScalingSpawnGroupMember member;
+            member.spawnId = fields[0].Get<uint32>();
+            member.mapId = fields[1].Get<uint32>();
+            member.scalingGroupId = fields[2].Get<uint32>();
+            member.activationOrder = fields[3].Get<uint16>();
+
+            if (!GetInstanceScalingConfig(member.mapId))
+            {
+                LOG_ERROR("sql.sql", "Spawn {} references map {} without instance settings in `rochenoire_scale_zone`.", member.spawnId, member.mapId);
+                continue;
+            }
+
+            uint64 groupKey = uint64(member.mapId) << 32 | member.scalingGroupId;
+            if (groupKey != previousGroupKey)
+            {
+                previousGroupKey = groupKey;
+                activationRank = 0;
+            }
+
+            member.activationRank = activationRank++;
+            mInstanceScalingSpawnGroupMemberMap[member.spawnId] = member;
+            ++mInstanceScalingSpawnGroupSizeMap[groupKey];
+        } while (groupResult->NextRow());
+    }
+
+    LOG_INFO("server.loading", ">> Loaded {} instance creature policies and {} scaling group members in {} ms", mInstanceCreatureScalingPolicyMap.size(), mInstanceScalingSpawnGroupMemberMap.size(), GetMSTimeDiffToNow(oldMSTime));
 }
 
 void ObjectMgr::LoadLevelScaleCreature()
@@ -11064,10 +11283,29 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
     if (isScaled || olddamage == 0)
         return olddamage;
 
+    float originalDamage = olddamage;
+    float instanceScalingRatio = 1.0f;
+    if (owner && target)
+    {
+        if (Unit* realOwner = owner->GetCharmerOrOwnerOrSelf())
+        {
+            if (Creature* creatureOwner = realOwner->ToCreature())
+            {
+                if (realOwner->GetMap()->Instanceable())
+                {
+                    instanceScalingRatio = creatureOwner->GetInstanceScalingSpellMultiplier();
+                    if (instanceScalingRatio != 1.0f)
+                        olddamage = isRevert ? olddamage / instanceScalingRatio : olddamage * instanceScalingRatio;
+                }
+            }
+        }
+    }
+
     if (!IsScalable(owner, target))
     {
-        Ratio = 1.0f;
-        return olddamage;
+        Ratio = isRevert ? 1.0f / instanceScalingRatio : instanceScalingRatio;
+        isScaled = olddamage != originalDamage;
+        return round(olddamage);
     }
 
     Creature* creature = nullptr;
@@ -11176,7 +11414,8 @@ float ObjectMgr::ScaleDamage(Unit* owner, Unit* target, float olddamage, bool& i
     if (value_neg)
         damage *= -1;
 
-    isScaled = (damage != olddamage);
+    Ratio *= isRevert ? 1.0f / instanceScalingRatio : instanceScalingRatio;
+    isScaled = (damage != originalDamage);
     return round(damage);
 }
 

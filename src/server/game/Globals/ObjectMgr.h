@@ -753,12 +753,59 @@ struct ZoneFlex
     uint8 LevelRangeMin;
     uint8 LevelRangeMax;
     uint32 areaFlags;
+    uint8 minimumPlayers = 0;
+    uint8 maximumPlayers = 0;
+    uint8 requiredTankCount = 0;
 
     bool IsLowLevel() const { return (areaFlags & AREA_FLAG_LOWLEVEL) != 0; }
     bool IsScalingDisabled() const { return (areaFlags & (AREA_FLAG_LOWLEVEL | AREA_FLAG_CAPITAL | AREA_FLAG_CITY)) != 0; }
+    bool HasInstanceScaling() const { return minimumPlayers && maximumPlayers >= minimumPlayers; }
 };
 
+struct InstanceCreatureScalingPolicy
+{
+    uint32 creatureEntry = 0;
+    uint32 mapId = 0;
+    uint8 requiredTankCountOverride = 0;
+    float raidDamageWeight = 0.0f;
+    float minimumCreatureDamageMultiplier = 0.8f;
+    float minimumRetainedCreatureHealthMultiplier = 0.7f;
+};
+
+struct InstanceScalingMultipliers
+{
+    uint8 effectivePlayerCount = 0;
+    float health = 1.0f;
+    float damage = 1.0f;
+    float attackSpeed = 1.0f;
+};
+
+struct InstanceScalingSpawnGroupMember
+{
+    uint32 spawnId = 0;
+    uint32 mapId = 0;
+    uint32 scalingGroupId = 0;
+    uint16 activationOrder = 0;
+    uint16 activationRank = 0;
+};
+
+namespace Rochenoire
+{
+    namespace InstanceScaling
+    {
+        uint8 ClampPlayerCount(ZoneFlex const& instanceConfig, uint32 playerCount);
+        InstanceScalingMultipliers CalculateMultipliers(ZoneFlex const& instanceConfig, InstanceCreatureScalingPolicy const& creaturePolicy, uint32 playerCount);
+        uint32 CalculateDifficultyPercentage(InstanceScalingMultipliers const& multipliers);
+        uint32 CalculateActiveCreatureCount(uint32 configuredCreatureCount, float healthMultiplier, float minimumRetainedCreatureHealthMultiplier);
+        bool ShouldApplyPendingPlayerCount(uint8 effectivePlayerCount, uint8 pendingPlayerCount, bool encounterInProgress);
+    }
+}
+
 typedef std::unordered_map<uint32, ZoneFlex> ZoneFlexMap;
+typedef std::unordered_map<uint32, ZoneFlex> InstanceZoneScalingMap;
+typedef std::unordered_map<uint64, InstanceCreatureScalingPolicy> InstanceCreatureScalingPolicyMap;
+typedef std::unordered_map<uint32, InstanceScalingSpawnGroupMember> InstanceScalingSpawnGroupMemberMap;
+typedef std::unordered_map<uint64, uint32> InstanceScalingSpawnGroupSizeMap;
 typedef std::unordered_map<uint32, uint32> QuestZoneFlexOverrideMap;
 typedef std::unordered_map<uint32, uint32> RemplacementIdsMap;
 typedef std::unordered_map<uint32, RemplacementIdsMap> LootConsumableScaleMap;
@@ -1792,8 +1839,14 @@ public:
     uint8 GetQuestLevelScaled(int32 zoneOrSort, uint8 playerLevel) const;
     uint8 GetQuestLevelScaled(uint32 questId, int32 zoneOrSort, uint8 playerLevel) const;
     ZoneFlexMap const& GetZoneFlexMap() const { return mZoneFlexMap; }
+    ZoneFlex const* GetInstanceScalingConfig(uint32 mapId) const;
+    InstanceCreatureScalingPolicy const* GetInstanceCreatureScalingPolicy(uint32 mapId, uint32 creatureEntry) const;
+    InstanceScalingSpawnGroupMember const* GetInstanceScalingSpawnGroupMember(uint32 spawnId) const;
+    uint32 GetInstanceScalingSpawnGroupSize(uint32 mapId, uint32 scalingGroupId) const;
     void SetZoneFlexForTest(ZoneFlex const& zoneFlex);
     void RemoveZoneFlexForTest(uint32 areaId);
+    void SetInstanceScalingConfigForTest(ZoneFlex const& zoneFlex) { mInstanceZoneScalingMap[zoneFlex.mapId] = zoneFlex; }
+    void RemoveInstanceScalingConfigForTest(uint32 mapId) { mInstanceZoneScalingMap.erase(mapId); }
     void SetQuestZoneFlexOverrideForTest(uint32 questId, uint32 areaId) { mQuestZoneFlexOverrides[questId] = areaId; }
     void RemoveQuestZoneFlexOverrideForTest(uint32 questId) { mQuestZoneFlexOverrides.erase(questId); }
     ZoneFlex const* GetZoneFlexForTest(uint32 areaId) const { return GetZoneFlex(areaId); }
@@ -1823,6 +1876,7 @@ public:
 
     // Loads zone and creature level overrides used by custom scaling.
     void LoadZoneScale();
+    void LoadInstanceScaling();
     void LoadLevelScaleCreature();
     void LoadLevelScaleCreatureTemplate();
     void LoadLootConsumableScale();
@@ -1839,6 +1893,10 @@ public:
 
 private:
     ZoneFlexMap mZoneFlexMap;
+    InstanceZoneScalingMap mInstanceZoneScalingMap;
+    InstanceCreatureScalingPolicyMap mInstanceCreatureScalingPolicyMap;
+    InstanceScalingSpawnGroupMemberMap mInstanceScalingSpawnGroupMemberMap;
+    InstanceScalingSpawnGroupSizeMap mInstanceScalingSpawnGroupSizeMap;
     QuestZoneFlexOverrideMap mQuestZoneFlexOverrides;
     CreatureForceLevelVar mCreatureForcedLevelVarMap;
     CreatureForceLevelVar mCreatureForcedLevelVarMapTemplate;

@@ -418,6 +418,99 @@ TEST_F(ScalingTests, ExplorationLevelUsesEnabledAreaOrParentRange)
         sObjectMgr->RemoveZoneFlexForTest(ChildAreaId);
 }
 
+TEST_F(ScalingTests, InstanceScalingConfigurationUsesMapLookup)
+{
+    constexpr uint32 MapId = 65020;
+    ZoneFlex instanceConfig{ "Instance", 65021, MapId, 1, 80, 0, 10, 25, 2 };
+
+    sObjectMgr->SetInstanceScalingConfigForTest(instanceConfig);
+    ZoneFlex const* loadedConfig = sObjectMgr->GetInstanceScalingConfig(MapId);
+    ASSERT_NE(loadedConfig, nullptr);
+    EXPECT_EQ(loadedConfig->minimumPlayers, 10);
+    EXPECT_EQ(loadedConfig->maximumPlayers, 25);
+    EXPECT_EQ(loadedConfig->requiredTankCount, 2);
+    sObjectMgr->RemoveInstanceScalingConfigForTest(MapId);
+}
+
+TEST_F(ScalingTests, InstanceScalingClampsPlayerCount)
+{
+    ZoneFlex instanceConfig{ "Instance", 1, 1, 1, 80, 0, 10, 25, 2 };
+
+    EXPECT_EQ(Rochenoire::InstanceScaling::ClampPlayerCount(instanceConfig, 1), 10);
+    EXPECT_EQ(Rochenoire::InstanceScaling::ClampPlayerCount(instanceConfig, 17), 17);
+    EXPECT_EQ(Rochenoire::InstanceScaling::ClampPlayerCount(instanceConfig, 40), 25);
+}
+
+TEST_F(ScalingTests, InstanceScalingIsNeutralAtMaximumPlayers)
+{
+    ZoneFlex instanceConfig{ "Instance", 1, 1, 1, 80, 0, 10, 25, 2 };
+    InstanceCreatureScalingPolicy policy;
+    InstanceScalingMultipliers multipliers = Rochenoire::InstanceScaling::CalculateMultipliers(instanceConfig, policy, 25);
+
+    EXPECT_EQ(multipliers.effectivePlayerCount, 25);
+    EXPECT_FLOAT_EQ(multipliers.health, 1.0f);
+    EXPECT_FLOAT_EQ(multipliers.damage, 1.0f);
+    EXPECT_FLOAT_EQ(multipliers.attackSpeed, 1.0f);
+}
+
+TEST_F(ScalingTests, InstanceScalingHealthUsesDirectPopulationRatio)
+{
+    ZoneFlex instanceConfig{ "Instance", 1, 1, 1, 80, 0, 3, 5, 1 };
+    InstanceCreatureScalingPolicy policy;
+    InstanceScalingMultipliers multipliers = Rochenoire::InstanceScaling::CalculateMultipliers(instanceConfig, policy, 3);
+
+    float expectedHealthRatio = EstimateDamageDealers(5.0f, 3.0f, 1.0f) / EstimateDamageDealers(5.0f, 5.0f, 1.0f);
+    EXPECT_FLOAT_EQ(multipliers.health, expectedHealthRatio);
+}
+
+TEST_F(ScalingTests, InstanceScalingDifficultyPercentageUsesRoundedHealthMultiplier)
+{
+    InstanceScalingMultipliers multipliers;
+    multipliers.health = 0.746f;
+
+    EXPECT_EQ(Rochenoire::InstanceScaling::CalculateDifficultyPercentage(multipliers), 75);
+    multipliers.health = 1.0f;
+    EXPECT_EQ(Rochenoire::InstanceScaling::CalculateDifficultyPercentage(multipliers), 100);
+}
+
+TEST_F(ScalingTests, InstanceScalingHandlesFixedPlayerCount)
+{
+    ZoneFlex instanceConfig{ "Instance", 1, 1, 1, 80, 0, 10, 10, 2 };
+    InstanceCreatureScalingPolicy policy;
+    InstanceScalingMultipliers multipliers = Rochenoire::InstanceScaling::CalculateMultipliers(instanceConfig, policy, 5);
+
+    EXPECT_EQ(multipliers.effectivePlayerCount, 10);
+    EXPECT_GT(multipliers.health, 0.0f);
+    EXPECT_GT(multipliers.damage, 0.0f);
+    EXPECT_GT(multipliers.attackSpeed, 0.0f);
+}
+
+TEST_F(ScalingTests, InstanceScalingRaidDamageWeightChangesOutput)
+{
+    ZoneFlex instanceConfig{ "Instance", 1, 1, 1, 80, 0, 10, 25, 2 };
+    InstanceCreatureScalingPolicy tankDamagePolicy;
+    InstanceCreatureScalingPolicy raidDamagePolicy;
+    raidDamagePolicy.raidDamageWeight = 1.0f;
+
+    InstanceScalingMultipliers tankDamage = Rochenoire::InstanceScaling::CalculateMultipliers(instanceConfig, tankDamagePolicy, 17);
+    InstanceScalingMultipliers raidDamage = Rochenoire::InstanceScaling::CalculateMultipliers(instanceConfig, raidDamagePolicy, 17);
+    EXPECT_NE(tankDamage.damage, raidDamage.damage);
+}
+
+TEST_F(ScalingTests, InstanceScalingReducesLargeCreatureGroupsDeterministically)
+{
+    EXPECT_EQ(Rochenoire::InstanceScaling::CalculateActiveCreatureCount(10, 1.0f, 0.7f), 10);
+    EXPECT_EQ(Rochenoire::InstanceScaling::CalculateActiveCreatureCount(10, 0.2f, 0.7f), 2);
+    EXPECT_EQ(Rochenoire::InstanceScaling::CalculateActiveCreatureCount(1, 0.2f, 0.7f), 1);
+}
+
+TEST_F(ScalingTests, InstanceScalingDefersPopulationChangesDuringEncounter)
+{
+    EXPECT_FALSE(Rochenoire::InstanceScaling::ShouldApplyPendingPlayerCount(10, 15, true));
+    EXPECT_TRUE(Rochenoire::InstanceScaling::ShouldApplyPendingPlayerCount(10, 15, false));
+    EXPECT_FALSE(Rochenoire::InstanceScaling::ShouldApplyPendingPlayerCount(10, 10, false));
+}
+
 TEST_F(ScalingTests, EvP_Proc)
 {
     TestPlayer* source = CreatePlayer(1, TestLowLevel);
