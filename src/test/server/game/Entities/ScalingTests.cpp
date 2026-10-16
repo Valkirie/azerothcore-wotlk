@@ -504,6 +504,24 @@ TEST_F(ScalingTests, InstanceScalingReducesLargeCreatureGroupsDeterministically)
     EXPECT_EQ(Rochenoire::InstanceScaling::CalculateActiveCreatureCount(1, 0.2f, 0.7f), 1);
 }
 
+TEST_F(ScalingTests, InstanceScalingCompensatesRetainedCreatureStats)
+{
+    constexpr float BaseMultiplier = 0.2f;
+    constexpr uint32 ConfiguredCreatureCount = 10;
+    uint32 activeCreatureCount = Rochenoire::InstanceScaling::CalculateActiveCreatureCount(ConfiguredCreatureCount, BaseMultiplier, 0.7f);
+    float retainedCreatureMultiplier = Rochenoire::InstanceScaling::CalculateRetainedCreatureMultiplier(BaseMultiplier, ConfiguredCreatureCount, activeCreatureCount);
+
+    EXPECT_EQ(activeCreatureCount, 2);
+    EXPECT_FLOAT_EQ(retainedCreatureMultiplier, 1.0f);
+    EXPECT_FLOAT_EQ(retainedCreatureMultiplier * activeCreatureCount, BaseMultiplier * ConfiguredCreatureCount);
+}
+
+TEST_F(ScalingTests, InstanceScalingRetainedCreatureCompensationIsNeutralWithoutSuppression)
+{
+    EXPECT_FLOAT_EQ(Rochenoire::InstanceScaling::CalculateRetainedCreatureMultiplier(0.2f, 1, 1), 0.2f);
+    EXPECT_FLOAT_EQ(Rochenoire::InstanceScaling::CalculateRetainedCreatureMultiplier(0.2f, 0, 0), 0.2f);
+}
+
 TEST_F(ScalingTests, InstanceScalingDefersPopulationChangesDuringEncounter)
 {
     EXPECT_FALSE(Rochenoire::InstanceScaling::ShouldApplyPendingPlayerCount(10, 15, true));

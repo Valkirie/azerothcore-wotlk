@@ -266,6 +266,14 @@ uint32 CalculateActiveCreatureCount(uint32 configuredCreatureCount, float health
     return activeCreatureCount;
 }
 
+float CalculateRetainedCreatureMultiplier(float baseMultiplier, uint32 configuredCreatureCount, uint32 activeCreatureCount)
+{
+    if (!configuredCreatureCount || !activeCreatureCount)
+        return baseMultiplier;
+
+    return baseMultiplier * configuredCreatureCount / activeCreatureCount;
+}
+
 bool ShouldApplyPendingPlayerCount(uint8 effectivePlayerCount, uint8 pendingPlayerCount, bool encounterInProgress)
 {
     return effectivePlayerCount != pendingPlayerCount && !encounterInProgress;

@@ -2308,7 +2308,8 @@ void InstanceMap::ApplyInstanceScalingToCreature(ObjectGuid::LowType spawnId, Cr
     InstanceCreatureScalingPolicy const* configuredPolicy = sObjectMgr->GetInstanceCreatureScalingPolicy(GetId(), creature->GetEntry());
     InstanceCreatureScalingPolicy const& policy = configuredPolicy ? *configuredPolicy : defaultPolicy;
     InstanceScalingMultipliers multipliers = Rochenoire::InstanceScaling::CalculateMultipliers(*instanceConfig, policy, _instanceScalingState.effectivePlayerCount);
-    float packDamageCompensation = 1.0f;
+    float healthMultiplier = multipliers.health;
+    float damageMultiplier = multipliers.damage;
 
     InstanceScalingSpawnGroupMember const* member = sObjectMgr->GetInstanceScalingSpawnGroupMember(spawnId);
     if (!member || member->mapId != GetId())
@@ -2321,10 +2322,13 @@ void InstanceMap::ApplyInstanceScalingToCreature(ObjectGuid::LowType spawnId, Cr
         uint32 activeCreatureCount = Rochenoire::InstanceScaling::CalculateActiveCreatureCount(configuredGroupSize, multipliers.health, policy.minimumRetainedCreatureHealthMultiplier);
         creature->SetSuppressedByInstanceScaling(member->activationRank >= activeCreatureCount);
         if (activeCreatureCount)
-            packDamageCompensation = float(configuredGroupSize) / activeCreatureCount;
+        {
+            healthMultiplier = Rochenoire::InstanceScaling::CalculateRetainedCreatureMultiplier(multipliers.health, configuredGroupSize, activeCreatureCount);
+            damageMultiplier = Rochenoire::InstanceScaling::CalculateRetainedCreatureMultiplier(multipliers.damage, configuredGroupSize, activeCreatureCount);
+        }
     }
 
-    creature->ApplyInstanceScaling(multipliers.health, multipliers.damage * packDamageCompensation, multipliers.attackSpeed);
+    creature->ApplyInstanceScaling(healthMultiplier, damageMultiplier, multipliers.attackSpeed);
 }
 
 void InstanceMap::RefreshInstanceScalingSpawnGroups()

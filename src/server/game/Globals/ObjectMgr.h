@@ -797,6 +797,7 @@ namespace Rochenoire
         InstanceScalingMultipliers CalculateMultipliers(ZoneFlex const& instanceConfig, InstanceCreatureScalingPolicy const& creaturePolicy, uint32 playerCount);
         uint32 CalculateDifficultyPercentage(InstanceScalingMultipliers const& multipliers);
         uint32 CalculateActiveCreatureCount(uint32 configuredCreatureCount, float healthMultiplier, float minimumRetainedCreatureHealthMultiplier);
+        float CalculateRetainedCreatureMultiplier(float baseMultiplier, uint32 configuredCreatureCount, uint32 activeCreatureCount);
         bool ShouldApplyPendingPlayerCount(uint8 effectivePlayerCount, uint8 pendingPlayerCount, bool encounterInProgress);
     }
 }
