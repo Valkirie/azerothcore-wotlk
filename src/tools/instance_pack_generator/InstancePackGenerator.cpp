@@ -84,24 +84,6 @@ float MaximumPairDistance(std::vector<InstancePackSpawn const*> const& members)
     return maximum;
 }
 
-InstancePackSpawn const* FindMedoid(std::vector<InstancePackSpawn const*> const& members)
-{
-    return *std::min_element(members.begin(), members.end(), [&members](InstancePackSpawn const* left, InstancePackSpawn const* right)
-    {
-        auto totalDistance = [&members](InstancePackSpawn const* candidate)
-        {
-            float total = 0.0f;
-            for (InstancePackSpawn const* member : members)
-                total += Distance(*candidate, *member);
-            return total;
-        };
-
-        float const leftDistance = totalDistance(left);
-        float const rightDistance = totalDistance(right);
-        return leftDistance != rightDistance ? leftDistance < rightDistance : left->spawnId < right->spawnId;
-    });
-}
-
 float MaximumCenterDistance(std::vector<InstancePackSpawn const*> const& members, InstancePackSpawn const& center)
 {
     float maximum = 0.0f;
@@ -234,43 +216,10 @@ void InstancePackGenerator::BuildCandidates()
             << " eligible, " << mapSpawnCount - eligibleSpawnCount << " excluded).\n";
 
         std::size_t const candidatesBeforeMap = _candidates.size();
-        std::size_t formationPackCount = 0;
         std::size_t spatialPackCount = 0;
-        std::set<uint32> used;
-        std::map<uint32, std::vector<InstancePackSpawn const*>> formations;
-        for (InstancePackSpawn const& spawn : _spawns)
-            if (spawn.mapId == mapId && spawn.rejectionReason.empty() && spawn.formationLeader)
-                formations[spawn.formationLeader].push_back(&spawn);
-
-        for (auto& [leader, members] : formations)
-        {
-            std::sort(members.begin(), members.end(), [](InstancePackSpawn const* left, InstancePackSpawn const* right)
-            {
-                auto priority = [](InstancePackSpawn const* member)
-                {
-                    return std::tuple(member->spawnId != member->formationLeader, -int32(member->rank), member->spawnId);
-                };
-                return priority(left) < priority(right);
-            });
-
-            bool const hasLeader = std::any_of(members.begin(), members.end(), [](InstancePackSpawn const* member)
-            {
-                return member->spawnId == member->formationLeader;
-            });
-            if (!hasLeader || members.size() < _options.minimumSize || members.size() > _options.maximumSize)
-                continue;
-
-            InstancePackSpawn const* center = FindMedoid(members);
-            _candidates.push_back({ mapId, members, "formation", Confidence(members, "formation", _options.distance),
-                MaximumPairDistance(members), center->spawnId, MaximumCenterDistance(members, *center) });
-            ++formationPackCount;
-            for (InstancePackSpawn const* member : members)
-                used.insert(member->spawnId);
-        }
-
         std::map<Context, std::vector<InstancePackSpawn const*>> contexts;
         for (InstancePackSpawn const& spawn : _spawns)
-            if (spawn.mapId == mapId && spawn.rejectionReason.empty() && !spawn.formationLeader && !used.contains(spawn.spawnId))
+            if (spawn.mapId == mapId && spawn.rejectionReason.empty() && !spawn.formationLeader)
                 contexts[{ spawn.mapId, spawn.zoneId, spawn.areaId, spawn.spawnMask, spawn.phaseMask }].push_back(&spawn);
 
         for (auto& [context, remaining] : contexts)
@@ -332,8 +281,8 @@ void InstancePackGenerator::BuildCandidates()
         std::size_t packMemberCount = 0;
         for (auto itr = _candidates.begin() + candidatesBeforeMap; itr != _candidates.end(); ++itr)
             packMemberCount += itr->members.size();
-        std::cout << "Completed map " << mapId << ": " << formationPackCount + spatialPackCount << " packs ("
-            << formationPackCount << " formation, " << spatialPackCount << " spatial), " << packMemberCount << " grouped spawns.\n";
+        std::cout << "Completed map " << mapId << ": " << spatialPackCount << " spatial packs, "
+            << packMemberCount << " grouped spawns.\n";
     }
 
     std::sort(_candidates.begin(), _candidates.end(), [](InstancePackCandidate const& left, InstancePackCandidate const& right)
@@ -419,14 +368,15 @@ bool InstancePackGenerator::WriteSql() const
         return false;
     }
 
-    output << "-- Review generated packs before executing this file.\n\n" << std::fixed;
+    output << "-- Review generated spatial packs before executing this file.\n"
+        << "-- Existing curated and formation-derived rows take precedence.\n\n" << std::fixed;
     for (InstancePackCandidate const& candidate : _candidates)
     {
         output << "-- map=" << candidate.mapId << " group=" << candidate.GetGroupId() << " source=" << candidate.source
             << " confidence=" << std::setprecision(3) << candidate.confidence << " size=" << candidate.members.size()
             << " spread=" << std::setprecision(2) << candidate.maximumDistance << " center=" << candidate.centerSpawnId
             << " radius=" << candidate.maximumCenterDistance << '\n';
-        output << "INSERT INTO `rochenoire_scale_instance_spawn_group`\n"
+        output << "INSERT IGNORE INTO `rochenoire_scale_instance_spawn_group`\n"
             << "    (`spawnId`, `mapId`, `scalingGroupId`, `activationOrder`, `comment`) VALUES\n";
         for (std::size_t activationOrder = 0; activationOrder < candidate.members.size(); ++activationOrder)
         {

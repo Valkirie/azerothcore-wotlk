@@ -4,6 +4,7 @@
 -- formations. A formation is accepted only when every member is ordinary combat
 -- trash on a configured instance map. Existing manually curated rows are never
 -- replaced, and any formation containing one is left entirely to manual tuning.
+-- Generated review rows are replaced when they overlap an accepted formation.
 --
 -- rochenoire_scale_instance_creature intentionally remains override-only. All
 -- persistent instance creatures already use the default scaling policy, so rows
@@ -65,6 +66,7 @@ SELECT
             SELECT 1
             FROM `rochenoire_scale_instance_spawn_group` existing
             WHERE existing.`spawnId` = c.`guid`
+              AND (existing.`comment` IS NULL OR existing.`comment` NOT LIKE 'review:%')
         ) THEN 1
         ELSE 0
     END AS `unsafe`
@@ -123,7 +125,12 @@ FROM (
         ON safeFormation.`mapId` = member.`mapId`
        AND safeFormation.`leaderGUID` = member.`leaderGUID`
 ) ranked
-ORDER BY ranked.`mapId`, ranked.`leaderGUID`, ranked.`activationOrder`;
+ORDER BY ranked.`mapId`, ranked.`leaderGUID`, ranked.`activationOrder`
+ON DUPLICATE KEY UPDATE
+    `mapId` = VALUES(`mapId`),
+    `scalingGroupId` = VALUES(`scalingGroupId`),
+    `activationOrder` = VALUES(`activationOrder`),
+    `comment` = VALUES(`comment`);
 
 DROP TEMPORARY TABLE IF EXISTS `temp_safe_instance_formations`;
 DROP TEMPORARY TABLE IF EXISTS `temp_instance_formation_members`;
