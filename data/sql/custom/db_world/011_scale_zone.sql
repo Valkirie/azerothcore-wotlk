@@ -211,8 +211,12 @@ INSERT INTO `rochenoire_scale_zone`(`areaName`,`mapId`,`areaId`,`LevelRangeMin`,
 ('Hrothgar\'s Landing',571,4742,67,80,1093,NULL);
 
 UPDATE `rochenoire_scale_zone`
+SET `minimumPlayers` = 2, `maximumPlayers` = 5, `requiredTankCount` = 1
+WHERE `mapId` IN (34,389);
+
+UPDATE `rochenoire_scale_zone`
 SET `minimumPlayers` = 3, `maximumPlayers` = 5, `requiredTankCount` = 1
-WHERE `mapId` IN (33,34,36,43,47,48,70,90,109,129,189,209,230,269,289,329,349,389,
+WHERE `mapId` IN (33,36,43,47,48,70,90,109,129,189,209,230,269,289,329,349,
                   540,542,543,545,546,547,552,553,554,555,556,557,558,560,585,
                   576,578,600,601,604,608,619);
 
