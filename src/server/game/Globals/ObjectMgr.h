@@ -769,7 +769,7 @@ struct InstanceCreatureScalingPolicy
     uint8 requiredTankCountOverride = 0;
     float raidDamageWeight = 0.0f;
     float minimumCreatureDamageMultiplier = 0.8f;
-    float minimumRetainedCreatureHealthMultiplier = 0.7f;
+    float minimumRetainedCreatureHealthMultiplier = 1.0f;
 };
 
 struct InstanceScalingMultipliers

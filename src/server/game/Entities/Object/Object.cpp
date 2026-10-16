@@ -1820,6 +1820,10 @@ bool WorldObject::CanSeeOrDetect(WorldObject const* obj, bool ignoreStealth, boo
     if (CanNeverSee(obj))
         return false;
 
+    if (Creature const* creature = obj->ToCreature())
+        if (creature->IsSuppressedByInstanceScaling())
+            return false;
+
     if (obj->IsAlwaysVisibleFor(this) || CanAlwaysSee(obj))
         return true;
 

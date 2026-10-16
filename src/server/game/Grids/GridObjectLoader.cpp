@@ -58,6 +58,7 @@ void GridObjectLoader::LoadCreatures(CellGuidSet const& guid_set, Map* map)
         }
 
         AddObjectHelper<Creature>(map, obj);
+        map->NotifyCreatureAddedToMap(obj);
 
         // Grid load bypasses Map::AddToMap, so seat accessories here.
         if (Vehicle* vehicle = obj->GetVehicleKit())

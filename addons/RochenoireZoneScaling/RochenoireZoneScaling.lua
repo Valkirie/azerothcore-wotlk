@@ -4,11 +4,13 @@ local LOCALIZED = {
     enUS = {
         LEVELS = "Levels %d-%d",
         DIFFICULTY = "Difficulty",
+        DIFFICULTY_PERCENTAGE = "Difficulty: %d%%",
         WAITING = "Waiting for zone scaling data...",
     },
     frFR = {
         LEVELS = "Niveaux %d-%d",
         DIFFICULTY = "Difficulté",
+        DIFFICULTY_PERCENTAGE = "Difficulté : %d%%",
         WAITING = "En attente des données de mise à niveau...",
     },
 }
@@ -70,6 +72,7 @@ difficultyBar:SetWidth(200)
 difficultyBar:SetHeight(14)
 difficultyBar:SetMinMaxValues(0, 100)
 difficultyBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+difficultyBar:EnableMouse(true)
 
 local difficultyBackground = difficultyBar:CreateTexture(nil, "BACKGROUND")
 difficultyBackground:SetAllPoints(difficultyBar)
@@ -82,15 +85,28 @@ difficultyText:SetText(L.DIFFICULTY)
 difficultyText:SetTextColor(1, 1, 1)
 difficultyBar:Hide()
 
+difficultyBar:SetScript("OnEnter", function(self)
+    if self.difficulty then
+        GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+        GameTooltip:SetText(string.format(L.DIFFICULTY_PERCENTAGE, self.difficulty), 1, 1, 1)
+        GameTooltip:Show()
+    end
+end)
+difficultyBar:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+end)
+
 local function UpdateDifficulty(difficulty)
     if difficulty then
         local value = math.max(0, math.min(100, difficulty))
         local red = value / 100
+        difficultyBar.difficulty = value
         difficultyBar:SetValue(value)
         difficultyBar:SetStatusBarColor(red, 1 - red, 0)
         difficultyBar:Show()
         frame:SetHeight(86)
     else
+        difficultyBar.difficulty = nil
         difficultyBar:Hide()
         frame:SetHeight(64)
     end

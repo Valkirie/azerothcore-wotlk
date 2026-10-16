@@ -359,6 +359,7 @@ public:
 
     typedef std::unordered_multimap<ObjectGuid::LowType, Creature*> CreatureBySpawnIdContainer;
     CreatureBySpawnIdContainer& GetCreatureBySpawnIdStore() { return _creatureBySpawnIdStore; }
+    void NotifyCreatureAddedToMap(Creature* creature) { OnCreatureAddedToMap(creature); }
 
     typedef std::unordered_multimap<ObjectGuid::LowType, GameObject*> GameObjectBySpawnIdContainer;
     GameObjectBySpawnIdContainer& GetGameObjectBySpawnIdStore() { return _gameobjectBySpawnIdStore; }
@@ -749,8 +750,12 @@ public:
     [[nodiscard]] uint32 GetMaxResetDelay() const;
     [[nodiscard]] bool HasInstanceScaling() const { return _instanceScalingState.enabled; }
     [[nodiscard]] uint8 GetEffectiveInstancePlayerCount() const { return _instanceScalingState.effectivePlayerCount; }
+    [[nodiscard]] bool HasForcedInstancePlayerCount() const { return _instanceScalingState.playerCountForced; }
+    [[nodiscard]] uint8 GetForcedInstancePlayerCount() const { return _instanceScalingState.forcedPlayerCount; }
     [[nodiscard]] uint32 GetInstanceScalingDifficultyPercentage() const;
     [[nodiscard]] bool IsInstanceScalingRefreshPending() const { return _instanceScalingState.refreshPending; }
+    void SetForcedInstancePlayerCount(uint8 playerCount);
+    void ResetForcedInstancePlayerCount();
 
     void InitVisibilityDistance() override;
 
@@ -761,14 +766,16 @@ private:
     {
         bool enabled = false;
         bool refreshPending = false;
+        bool playerCountForced = false;
         uint8 effectivePlayerCount = 0;
         uint8 pendingPlayerCount = 0;
+        uint8 forcedPlayerCount = 0;
     };
 
     void QueueInstanceScalingRefresh();
-    void ApplyPendingInstanceScaling();
+    void ApplyPendingInstanceScaling(bool force = false);
     void OnCreatureAddedToMap(Creature* creature) override;
-    void OnCreatureRemovedFromMap(Creature* creature) override;
+    void ApplyInstanceScalingToCreature(ObjectGuid::LowType spawnId, Creature* creature);
     void RefreshInstanceScalingSpawnGroups();
     [[nodiscard]] bool IsEncounterInProgress() const;
 
@@ -777,7 +784,6 @@ private:
     InstanceScript* instance_data;
     uint32 i_script_id;
     InstanceScalingState _instanceScalingState;
-    std::unordered_map<ObjectGuid::LowType, Creature*> _instanceScalingCreatures;
 };
 
 class BattlegroundMap : public Map

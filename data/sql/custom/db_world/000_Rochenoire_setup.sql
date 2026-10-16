@@ -30,10 +30,13 @@ CREATE TABLE IF NOT EXISTS `rochenoire_scale_instance_creature` (
   `requiredTankCountOverride` TINYINT UNSIGNED NOT NULL DEFAULT '0',
   `raidDamageWeight` FLOAT UNSIGNED NOT NULL DEFAULT '0',
   `minimumCreatureDamageMultiplier` FLOAT UNSIGNED NOT NULL DEFAULT '0.8',
-  `minimumRetainedCreatureHealthMultiplier` FLOAT UNSIGNED NOT NULL DEFAULT '0.7',
+  `minimumRetainedCreatureHealthMultiplier` FLOAT UNSIGNED NOT NULL DEFAULT '1.0',
   `comment` VARCHAR(255) DEFAULT NULL,
   PRIMARY KEY (`creatureEntry`,`mapId`)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8;
+
+ALTER TABLE `rochenoire_scale_instance_creature`
+  MODIFY COLUMN `minimumRetainedCreatureHealthMultiplier` FLOAT UNSIGNED NOT NULL DEFAULT '1.0';
 
 CREATE TABLE IF NOT EXISTS `rochenoire_scale_instance_spawn_group` (
   `spawnId` INT UNSIGNED NOT NULL,
