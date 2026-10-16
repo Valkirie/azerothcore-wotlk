@@ -272,6 +272,28 @@ public:
         return true;
     }
 
+    static bool HandleNpcSetLevelVarCommand(ChatHandler* handler, int8 levelVar, bool templateEntry)
+    {
+        Creature* creature = handler->getSelectedCreature();
+        if (!creature || creature->IsPet() || !creature->GetSpawnId())
+        {
+            handler->SendErrorMessage(LANG_SELECT_CREATURE);
+            return false;
+        }
+
+        if (templateEntry)
+        {
+            WorldDatabase.Execute("REPLACE INTO rochenoire_scale_level_creature_template (entry, flvar) VALUES ({}, {})", creature->GetEntry(), levelVar);
+        }
+        else
+        {
+            WorldDatabase.Execute("REPLACE INTO rochenoire_scale_level_creature (guid, flvar) VALUES ({}, {})", creature->GetSpawnId(), levelVar);
+        }
+
+        creature->SetLevelVar(levelVar);
+        return true;
+    }
+
     static bool HandleNpcLoadCommand(ChatHandler* handler, CreatureSpawnId spawnId)
     {
         if (!spawnId)
@@ -657,6 +679,7 @@ public:
 
     static bool HandleNpcInfoCommandShowCreature(ChatHandler* handler, Creature* target)
     {
+        Player* player = handler->GetSession()->GetPlayer();
         CreatureTemplate const* cInfo = target->GetCreatureTemplate();
         uint32 faction = target->GetFaction();
         uint32 npcflags = target->GetNpcFlags();
@@ -693,6 +716,7 @@ public:
 
         handler->PSendSysMessage(LANG_NPCINFO_CHAR,  target->GetSpawnId(), target->GetGUID().ToString(), entry, id1, id2, id3, displayid, nativeid, faction, npcflags);
         handler->PSendSysMessage(LANG_NPCINFO_LEVEL, target->GetLevel());
+        handler->PSendSysMessage(LANG_NPCINFO_LEVEL_SCALED, target->getLevelForTarget(player));
         handler->PSendSysMessage(LANG_NPCINFO_EQUIPMENT, target->GetCurrentEquipmentId(), target->GetOriginalEquipmentId());
         handler->PSendSysMessage(LANG_NPCINFO_HEALTH, target->GetCreateHealth(), target->GetMaxHealth(), target->GetHealth());
         handler->PSendSysMessage(LANG_NPCINFO_FLAGS, target->GetUnitFlags(), target->GetUnitFlags2(), target->GetDynamicFlags(), target->GetFaction());

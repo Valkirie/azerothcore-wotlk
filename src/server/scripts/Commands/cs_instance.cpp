@@ -36,6 +36,13 @@ public:
 
     ChatCommandTable GetCommands() const override
     {
+        static ChatCommandTable instanceScalingCommandTable =
+        {
+            { "set",    HandleInstanceScalingSetCommand,    rbac::RBAC_PERM_COMMAND_INSTANCE_STATS, Console::No },
+            { "reset",  HandleInstanceScalingResetCommand,  rbac::RBAC_PERM_COMMAND_INSTANCE_STATS, Console::No },
+            { "status", HandleInstanceScalingStatusCommand, rbac::RBAC_PERM_COMMAND_INSTANCE_STATS, Console::No },
+        };
+
         static ChatCommandTable instanceCommandTable =
         {
             { "listbinds",    HandleInstanceListBindsCommand,    rbac::RBAC_PERM_COMMAND_INSTANCE_LISTBINDS,     Console::No },
@@ -44,6 +51,7 @@ public:
             { "savedata",     HandleInstanceSaveDataCommand,     rbac::RBAC_PERM_COMMAND_INSTANCE_SAVEDATA,      Console::No },
             { "setbossstate", HandleInstanceSetBossStateCommand, rbac::RBAC_PERM_COMMAND_INSTANCE_SET_BOSS_STATE, Console::Yes },
             { "getbossstate", HandleInstanceGetBossStateCommand, rbac::RBAC_PERM_COMMAND_INSTANCE_GET_BOSS_STATE, Console::Yes },
+            { "scaling",      instanceScalingCommandTable },
         };
 
         static ChatCommandTable commandTable =
@@ -120,6 +128,51 @@ public:
 
         handler->PSendSysMessage("instances unbound: {}", counter);
 
+        return true;
+    }
+
+    static bool HandleInstanceScalingSetCommand(ChatHandler* handler, uint32 playerCount)
+    {
+        InstanceMap* map = GetInstanceScalingMap(handler);
+        if (!map)
+            return false;
+
+        if (!playerCount || playerCount > UINT8_MAX)
+        {
+            handler->SendErrorMessage("Player count must be between 1 and 255.");
+            return false;
+        }
+
+        map->SetForcedInstancePlayerCount(uint8(playerCount));
+        handler->PSendSysMessage("Instance scaling player count forced to {} (requested {}). Difficulty: {}%.",
+            map->GetForcedInstancePlayerCount(), playerCount, map->GetInstanceScalingDifficultyPercentage());
+        return true;
+    }
+
+    static bool HandleInstanceScalingResetCommand(ChatHandler* handler)
+    {
+        InstanceMap* map = GetInstanceScalingMap(handler);
+        if (!map)
+            return false;
+
+        map->ResetForcedInstancePlayerCount();
+        handler->PSendSysMessage("Instance scaling player count override cleared. Effective count: {}. Difficulty: {}%.",
+            map->GetEffectiveInstancePlayerCount(), map->GetInstanceScalingDifficultyPercentage());
+        return true;
+    }
+
+    static bool HandleInstanceScalingStatusCommand(ChatHandler* handler)
+    {
+        InstanceMap* map = GetInstanceScalingMap(handler);
+        if (!map)
+            return false;
+
+        ZoneFlex const* config = sObjectMgr->GetInstanceScalingConfig(map->GetId());
+        handler->PSendSysMessage("Instance scaling: effective {}, actual {}, forced {}, range {}-{}, difficulty {}%, refresh pending {}.",
+            map->GetEffectiveInstancePlayerCount(), map->GetPlayersCountExceptGMs(),
+            map->HasForcedInstancePlayerCount() ? std::to_string(map->GetForcedInstancePlayerCount()) : "none",
+            config->minimumPlayers, config->maximumPlayers, map->GetInstanceScalingDifficultyPercentage(),
+            map->IsInstanceScalingRefreshPending() ? "yes" : "no");
         return true;
     }
 
@@ -251,6 +304,24 @@ public:
     }
 
 private:
+    static InstanceMap* GetInstanceScalingMap(ChatHandler* handler)
+    {
+        InstanceMap* map = handler->GetSession()->GetPlayer()->GetMap()->ToInstanceMap();
+        if (!map)
+        {
+            handler->SendErrorMessage(LANG_NOT_DUNGEON);
+            return nullptr;
+        }
+
+        if (!map->HasInstanceScaling())
+        {
+            handler->SendErrorMessage("This instance does not have player-count scaling configured.");
+            return nullptr;
+        }
+
+        return map;
+    }
+
     // Maps encounterIndex -> encounterName from DBC data
     static std::unordered_map<uint32, char const*> GetEncounterNames(InstanceMap const* map)
     {

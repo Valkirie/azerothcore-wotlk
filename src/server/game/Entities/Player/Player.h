@@ -1390,6 +1390,7 @@ public:
         return mainItem && mainItem->GetTemplate()->InventoryType == INVTYPE_2HWEAPON && !CanTitanGrip();
     }
     void SendNewItem(Item* item, uint32 count, bool received, bool created, bool broadcast = false, bool sendChatMessage = true);
+    [[nodiscard]] uint32 GetVendorItemBuyPrice(ItemTemplate const* itemTemplate) const;
     bool BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uint32 item, uint8 count, uint8 bag, uint8 slot);
     bool _StoreOrEquipNewItem(uint32 vendorslot, uint32 item, uint8 count, uint8 bag, uint8 slot, int32 price, ItemTemplate const* pProto, Creature* pVendor, VendorItem const* crItem, bool bStore);
 
@@ -1445,7 +1446,7 @@ public:
     /***                    QUEST SYSTEM                   ***/
     /*********************************************************/
 
-    int32 GetQuestLevel(Quest const* quest) const { return quest && (quest->GetQuestLevel() > 0) ? quest->GetQuestLevel() : GetLevel(); }
+    int32 GetQuestLevel(Quest const* quest) const;
 
     void PrepareQuestMenu(ObjectGuid guid);
     void SendPreparedQuest(ObjectGuid guid);
@@ -1488,6 +1489,8 @@ public:
     bool GiveQuestSourceItem(Quest const* quest);
     bool TakeQuestSourceItem(uint32 questId, bool msg);
     uint32 CalculateQuestRewardXP(Quest const* quest);
+    [[nodiscard]] uint8 CalculateQuestRewardLevel(uint32 xp) const { return CalculateQuestRewardLevel(nullptr, xp); }
+    [[nodiscard]] uint8 CalculateQuestRewardLevel(Quest const* quest, uint32 xp) const;
     [[nodiscard]] bool GetQuestRewardStatus(uint32 quest_id) const;
     [[nodiscard]] QuestStatus GetQuestStatus(uint32 quest_id) const;
     void SetQuestStatus(uint32 questId, QuestStatus status, bool update = true);
@@ -1561,7 +1564,7 @@ public:
     [[nodiscard]] bool CanShareQuest(uint32 quest_id) const;
 
     void SendQuestComplete(uint32 quest_id);
-    void SendQuestReward(Quest const* quest, uint32 XP);
+    void SendQuestReward(Quest const* quest, uint32 XP, bool rewardWithMoney);
     void SendQuestFailed(uint32 questId, InventoryResult reason = EQUIP_ERR_OK);
     void SendQuestTimerFailed(uint32 quest_id);
     void SendCanTakeQuestResponse(QuestFailedReason msg) const;
@@ -1886,6 +1889,8 @@ public:
     void UpdatePvP(bool state, bool _override = false);
     void UpdateZone(uint32 newZone, uint32 newArea, bool force = false);
     void UpdateArea(uint32 newArea);
+    void SendZoneScalingCatalog() const;
+    void SendInstanceScalingUpdate() const;
     void SetNeedZoneUpdate(bool needUpdate) { m_needZoneUpdate = needUpdate; }
 
     void UpdateZoneDependentAuras(uint32 zone_id);    // zones
@@ -2609,6 +2614,14 @@ public:
     float GetAverageItemLevel();
     [[nodiscard]] float GetTotalItemLevel() const;
     float GetAverageItemLevelForDF();
+    // Calculates the player's effective item level for Rochenoire scaling and smart loot.
+    [[nodiscard]] uint32 GetItemLevel() const;
+    // Determines whether an item contributes to the effective item-level calculation.
+    [[nodiscard]] bool IsRelevant(Item const* item) const;
+    // Returns the weighted quantity of relevant items of the requested quality.
+    [[nodiscard]] float countRelevant(uint32 quality, bool inventory) const;
+    // Returns the quality-aware coefficient used by the smart-loot calculation.
+    [[nodiscard]] float GetItemLevelCoeff(uint32 quality) const;
     bool isDebugAreaTriggers;
 
     void ClearWhisperWhiteList() { WhisperList.clear(); }

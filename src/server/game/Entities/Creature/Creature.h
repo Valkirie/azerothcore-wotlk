@@ -64,9 +64,14 @@ public:
     bool Create(ObjectGuid::LowType guidlow, Map* map, uint32 phaseMask, uint32 Entry, uint32 vehId, float x, float y, float z, float ang, CreatureData const* data = nullptr);
     bool LoadCreaturesAddon(bool reload = false);
     void SelectLevel(bool changelevel = true);
+    void RefreshLevelVariation();
     void LoadEquipment(int8 id = 1, bool force = false);
 
     [[nodiscard]] ObjectGuid::LowType GetSpawnId() const { return m_spawnId; }
+    [[nodiscard]] bool IsSuppressedByInstanceScaling() const { return _suppressedByInstanceScaling; }
+    void SetSuppressedByInstanceScaling(bool suppressed);
+    void ApplyInstanceScaling(float healthMultiplier, float damageMultiplier, float attackSpeedMultiplier);
+    [[nodiscard]] float GetInstanceScalingSpellMultiplier() const { return _instanceScalingSpellMultiplier; }
 
     void Update(uint32 time) override;  // overwrited Unit::Update
     void GetRespawnPosition(float& x, float& y, float& z, float* ori = nullptr, float* dist = nullptr) const;
@@ -254,6 +259,8 @@ public:
 
     uint32 m_spells[MAX_CREATURE_SPELLS];
     CreatureSpellCooldowns m_CreatureSpellCooldowns;
+    [[nodiscard]] CreatureSpellCooldowns const& GetCreatureSpellCooldowns() const { return m_CreatureSpellCooldowns; }
+    void SetCreatureSpellCooldowns(CreatureSpellCooldowns cooldowns) { m_CreatureSpellCooldowns = std::move(cooldowns); }
     uint32 m_ProhibitSchoolTime[7];
 
     bool CanStartAttack(Unit const* u, bool force = false) const;
@@ -564,6 +571,14 @@ private:
     bool _damagedByPlayer;
     uint8 _highestPlayerAttackerLevel;
     bool _isCombatMovementAllowed;
+    bool _suppressedByInstanceScaling = false;
+    ReactStates _instanceScalingOriginalReactState = REACT_AGGRESSIVE;
+    bool _hasInstanceScalingBaseStats = false;
+    uint32 _instanceScalingBaseHealth = 0;
+    std::array<uint32, MAX_POWERS> _instanceScalingBasePower{};
+    std::array<uint32, MAX_ATTACK> _instanceScalingBaseAttackTime{};
+    std::array<std::array<float, 2>, MAX_ATTACK> _instanceScalingBaseWeaponDamage{};
+    float _instanceScalingSpellMultiplier = 1.0f;
 };
 
 class AssistDelayEvent : public BasicEvent

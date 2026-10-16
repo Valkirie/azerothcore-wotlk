@@ -1020,7 +1020,7 @@ class spell_hun_tame_beast : public SpellScript
 
         if (Creature* target = GetExplTargetUnit()->ToCreature())
         {
-            if (target->GetLevel() > player->GetLevel())
+            if (target->getLevelForTarget(player) > player->GetLevel() + 1)
             {
                 player->SendTameFailure(PET_TAME_TOO_HIGHLEVEL);
                 return SPELL_FAILED_DONT_REPORT;
@@ -1351,7 +1351,7 @@ class spell_hun_target_self_and_pet : public SpellScript
     {
         targets.remove_if([&](WorldObject const* target) -> bool
         {
-            return target != GetCaster() && target != GetCaster()->ToPet()->GetOwner();
+            return target != GetCaster() && target != GetCaster()->GetOwner();
         });
     }
 

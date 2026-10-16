@@ -64,7 +64,7 @@ private:
 struct BuildValuesCachePosPointers
 {
     BuildValuesCachePosPointers() :
-        UnitNPCFlagsPos(-1), UnitFieldAuraStatePos(-1), UnitFieldFlagsPos(-1), UnitFieldDisplayPos(-1),
+        UnitNPCFlagsPos(-1), UnitFieldAuraStatePos(-1), UnitFieldFlagsPos(-1), UnitFieldHealthPos(-1), UnitFieldMaxHealthPos(-1), UnitFieldLevelPos(-1), UnitFieldDisplayPos(-1),
         UnitDynamicFlagsPos(-1), UnitFieldBytes2Pos(-1), UnitFieldFactionTemplatePos(-1) {}
 
     void ApplyOffset(uint32 offset)
@@ -77,6 +77,15 @@ struct BuildValuesCachePosPointers
 
         if (UnitFieldFlagsPos >= 0)
             UnitFieldFlagsPos += offset;
+
+        if (UnitFieldHealthPos >= 0)
+            UnitFieldHealthPos += offset;
+
+        if (UnitFieldMaxHealthPos >= 0)
+            UnitFieldMaxHealthPos += offset;
+
+        if (UnitFieldLevelPos >= 0)
+            UnitFieldLevelPos += offset;
 
         if (UnitFieldDisplayPos >= 0)
             UnitFieldDisplayPos += offset;
@@ -97,6 +106,9 @@ struct BuildValuesCachePosPointers
     int32 UnitNPCFlagsPos;
     int32 UnitFieldAuraStatePos;
     int32 UnitFieldFlagsPos;
+    int32 UnitFieldHealthPos;
+    int32 UnitFieldMaxHealthPos;
+    int32 UnitFieldLevelPos;
     int32 UnitFieldDisplayPos;
     int32 UnitDynamicFlagsPos;
     int32 UnitFieldBytes2Pos;

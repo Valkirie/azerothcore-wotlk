@@ -722,7 +722,7 @@ class spell_dk_dancing_rune_weapon : public AuraScript
         else if (eventInfo.GetDamageInfo())
         {
             target = player->GetMeleeHitRedirectTarget(target);
-            CalcDamageInfo damageInfo;
+            CalcDamageInfo damageInfo{};
             player->CalculateMeleeDamage(target, &damageInfo, eventInfo.GetDamageInfo()->GetAttackType());
             for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
             {

@@ -906,7 +906,8 @@ void WorldSession::SendListInventory(ObjectGuid vendorGuid, uint32 vendorEntry)
     {
         if (VendorItem const* item = items->GetItem(slot))
         {
-            if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(item->item))
+            uint32 itemId = sObjectMgr->IsNotScaledLootFromVendor(item->item) ? item->item : LootStore::LoadScaledLoot(item->item, _player);
+            if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(itemId))
             {
                 if (!(itemTemplate->AllowableClass & _player->getClassMask()) && itemTemplate->Bonding == BIND_WHEN_PICKED_UP && !_player->IsGameMaster())
                 {
@@ -934,10 +935,10 @@ void WorldSession::SendListInventory(ObjectGuid vendorGuid, uint32 vendorEntry)
                 }
 
                 // reputation discount
-                int32 price = item->IsGoldRequired(itemTemplate) ? uint32(std::floor(itemTemplate->BuyPrice * discountMod)) : 0;
+                int32 price = item->IsGoldRequired(itemTemplate) ? uint32(std::floor(_player->GetVendorItemBuyPrice(itemTemplate) * discountMod)) : 0;
 
                 data << uint32(slot + 1);       // client expects counting to start at 1
-                data << uint32(item->item);
+                data << uint32(itemId);
                 data << uint32(itemTemplate->DisplayInfoID);
                 data << int32(leftInStock);
                 data << uint32(price);

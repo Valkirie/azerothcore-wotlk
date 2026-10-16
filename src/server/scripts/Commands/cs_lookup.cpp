@@ -476,6 +476,9 @@ public:
         // Search in `item_template`
         for (auto const& [entry, itemTemplate] : *sObjectMgr->GetItemTemplateStore())
         {
+            if (entry >= MIN_ENTRY_SCALE)
+                continue;
+
             int localeIndex = handler->GetSessionDbLocaleIndex();
             if (localeIndex >= 0)
             {

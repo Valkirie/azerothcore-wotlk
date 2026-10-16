@@ -64,6 +64,7 @@
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "TemporarySummon.h"
+#include "ThreatManager.h"
 #include "Totem.h"
 #include "TotemAI.h"
 #include "Transport.h"
@@ -105,11 +106,31 @@ float playerBaseMoveSpeed[MAX_MOVE_TYPE] =
 
 DamageInfo::DamageInfo(Unit* _attacker, Unit* _victim, uint32 _damage, SpellInfo const* _spellInfo, SpellSchoolMask _schoolMask, DamageEffectType _damageType, uint32 cleanDamage)
     : m_attacker(_attacker), m_victim(_victim), m_damage(_damage), m_spellInfo(_spellInfo), m_schoolMask(_schoolMask),
-      m_damageType(_damageType), m_attackType(BASE_ATTACK), m_cleanDamage(cleanDamage), m_hitMask(0)
+      m_damageType(_damageType), m_attackType(BASE_ATTACK), m_absorb(0), m_altHeal(0), m_altAbsorb(0), m_ratio(1.0f),
+      m_hasBeenScaled(false), m_isValuesForTarget(true), m_resist(0), m_block(0), m_cleanDamage(cleanDamage), m_hitMask(0)
 {
-    m_absorb = 0;
-    m_resist = 0;
-    m_block = 0;
+}
+
+// Clamp the unit's effective level to the configured range for its area or zone.
+uint8 Unit::getAreaZoneLevel(uint32 AreaID, uint32 ZoneID) const
+{
+    uint32 area = AreaID != 0 ? AreaID : GetMap() ? GetAreaId() : 0;
+    uint32 zone = ZoneID != 0 ? ZoneID : GetMap() ? GetZoneId() : 0;
+    uint8 level = GetLevel();
+
+    if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(area, zone))
+    {
+        if (zoneFlex->IsLowLevel())
+            return level;
+
+        if (level < zoneFlex->LevelRangeMin)
+            return zoneFlex->LevelRangeMin;
+
+        if (level > zoneFlex->LevelRangeMax)
+            return zoneFlex->LevelRangeMax;
+    }
+
+    return level;
 }
 
 DamageInfo::DamageInfo(CalcDamageInfo const& dmgInfo) : DamageInfo(DamageInfo(dmgInfo, 0), DamageInfo(dmgInfo, 1))
@@ -118,14 +139,16 @@ DamageInfo::DamageInfo(CalcDamageInfo const& dmgInfo) : DamageInfo(DamageInfo(dm
 
 DamageInfo::DamageInfo(DamageInfo const& dmg1, DamageInfo const& dmg2)
     : m_attacker(dmg1.m_attacker), m_victim(dmg1.m_victim), m_damage(dmg1.m_damage + dmg2.m_damage), m_spellInfo(dmg1.m_spellInfo), m_schoolMask(SpellSchoolMask(dmg1.m_schoolMask | dmg2.m_schoolMask)),
-    m_damageType(dmg1.m_damageType), m_attackType(dmg1.m_attackType), m_absorb(dmg1.m_absorb + dmg2.m_absorb), m_resist(dmg1.m_resist + dmg2.m_resist), m_block(dmg1.m_block),
-    m_cleanDamage(dmg1.m_cleanDamage + dmg1.m_cleanDamage), m_hitMask(dmg1.m_hitMask | dmg2.m_hitMask)
+    m_damageType(dmg1.m_damageType), m_attackType(dmg1.m_attackType), m_absorb(dmg1.m_absorb + dmg2.m_absorb), m_altHeal(0), m_altAbsorb(0), m_ratio(1.0f),
+    m_hasBeenScaled(false), m_isValuesForTarget(true), m_resist(dmg1.m_resist + dmg2.m_resist), m_block(dmg1.m_block),
+    m_cleanDamage(dmg1.m_cleanDamage + dmg2.m_cleanDamage), m_hitMask(dmg1.m_hitMask | dmg2.m_hitMask)
 {
 }
 
 DamageInfo::DamageInfo(CalcDamageInfo const& dmgInfo, uint8 damageIndex)
     : m_attacker(dmgInfo.attacker), m_victim(dmgInfo.target), m_damage(dmgInfo.damages[damageIndex].damage), m_spellInfo(nullptr), m_schoolMask(SpellSchoolMask(dmgInfo.damages[damageIndex].damageSchoolMask)),
-      m_damageType(DIRECT_DAMAGE), m_attackType(dmgInfo.attackType), m_absorb(dmgInfo.damages[damageIndex].absorb), m_resist(dmgInfo.damages[damageIndex].resist), m_block(dmgInfo.blocked_amount),
+      m_damageType(DIRECT_DAMAGE), m_attackType(dmgInfo.attackType), m_absorb(dmgInfo.damages[damageIndex].absorb), m_altHeal(0), m_altAbsorb(0), m_ratio(1.0f),
+      m_hasBeenScaled(false), m_isValuesForTarget(true), m_resist(dmgInfo.damages[damageIndex].resist), m_block(dmgInfo.blocked_amount),
       m_cleanDamage(dmgInfo.cleanDamage), m_hitMask(0)
 {
     switch (dmgInfo.TargetState)
@@ -183,7 +206,8 @@ DamageInfo::DamageInfo(CalcDamageInfo const& dmgInfo, uint8 damageIndex)
 DamageInfo::DamageInfo(SpellNonMeleeDamage const& spellNonMeleeDamage, DamageEffectType damageType, WeaponAttackType attackType, uint32 hitMask)
     : m_attacker(spellNonMeleeDamage.attacker), m_victim(spellNonMeleeDamage.target), m_damage(spellNonMeleeDamage.damage),
       m_spellInfo(spellNonMeleeDamage.spellInfo), m_schoolMask(SpellSchoolMask(spellNonMeleeDamage.schoolMask)), m_damageType(damageType),
-      m_attackType(attackType), m_absorb(spellNonMeleeDamage.absorb), m_resist(spellNonMeleeDamage.resist), m_block(spellNonMeleeDamage.blocked),
+      m_attackType(attackType), m_absorb(spellNonMeleeDamage.absorb), m_altHeal(0), m_altAbsorb(0), m_ratio(1.0f),
+      m_hasBeenScaled(false), m_isValuesForTarget(true), m_resist(spellNonMeleeDamage.resist), m_block(spellNonMeleeDamage.blocked),
       m_cleanDamage(spellNonMeleeDamage.cleanDamage), m_hitMask(hitMask)
 {
     if (spellNonMeleeDamage.blocked)
@@ -195,7 +219,8 @@ DamageInfo::DamageInfo(SpellNonMeleeDamage const& spellNonMeleeDamage, DamageEff
 DamageInfo::DamageInfo(SpellNonMeleeDamage const& spellNonMeleeDamage, DamageEffectType damageType, WeaponAttackType attackType, SpellMissInfo missInfo)
     : m_attacker(spellNonMeleeDamage.attacker), m_victim(spellNonMeleeDamage.target), m_damage(spellNonMeleeDamage.damage),
       m_spellInfo(spellNonMeleeDamage.spellInfo), m_schoolMask(SpellSchoolMask(spellNonMeleeDamage.schoolMask)), m_damageType(damageType),
-      m_attackType(attackType), m_absorb(spellNonMeleeDamage.absorb), m_resist(spellNonMeleeDamage.resist), m_block(spellNonMeleeDamage.blocked),
+      m_attackType(attackType), m_absorb(spellNonMeleeDamage.absorb), m_altHeal(0), m_altAbsorb(0), m_ratio(1.0f),
+      m_hasBeenScaled(false), m_isValuesForTarget(true), m_resist(spellNonMeleeDamage.resist), m_block(spellNonMeleeDamage.blocked),
       m_cleanDamage(spellNonMeleeDamage.cleanDamage), m_hitMask(PROC_HIT_NONE)
 {
     // Compute hitMask from SpellMissInfo
@@ -987,7 +1012,7 @@ void Unit::DealDamageMods(Unit const* victim, uint32& damage, uint32* absorb)
     }
 }
 
-uint32 Unit::DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage const* cleanDamage, DamageEffectType damagetype, SpellSchoolMask damageSchoolMask, SpellInfo const* spellProto, bool durabilityLoss, bool /*allowGM*/, Spell const* damageSpell /*= nullptr*/)
+uint32 Unit::DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage const* cleanDamage, DamageEffectType damagetype, SpellSchoolMask damageSchoolMask, SpellInfo const* spellProto, bool durabilityLoss, bool /*allowGM*/, Spell const* damageSpell /*= nullptr*/, bool damageAlreadyScaled /*= false*/)
 {
     damage = sScriptMgr->DealDamage(attacker, victim, damage, damagetype);
     // Xinef: initialize damage done for rage calculations
@@ -1109,7 +1134,7 @@ uint32 Unit::DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage
             if (hasSharedDamage && attacker && !attacker->IsFriendlyTo(shareDamageTarget))
                 attacker->AtTargetAttacked(shareDamageTarget, !spellProto || spellProto->HasInitialAggro());
 
-            Unit::DealDamage(attacker, shareDamageTarget, shareDamage, cleanDamage, NODAMAGE, damageSchoolMask, spellProto, false, false, damageSpell);
+        Unit::DealDamage(attacker, shareDamageTarget, shareDamage, cleanDamage, NODAMAGE, damageSchoolMask, spellProto, false, false, damageSpell, true);
         }
     }
 
@@ -1270,7 +1295,7 @@ uint32 Unit::DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage
 
             if (attacker && attacker != victim)
             {
-                victim->AddThreat(attacker, float(damage), damageSchoolMask, spellProto);
+                victim->AddThreat(attacker, float(damage), damageSchoolMask, spellProto, damageAlreadyScaled);
             }
         }
         else                                                // victim is a player
@@ -1522,6 +1547,14 @@ void Unit::CalculateSpellDamageTaken(SpellNonMeleeDamage* damageInfo, int32 dama
         victim->GetAI()->OnCalculateSpellDamageReceived(damage, this);
     }
 
+    SetRatioInSpellNonMeleeDamageForTarget(damageInfo);
+    if (damageInfo->scaled && !damageInfo->scaledBeforeAbsorb)
+    {
+        damageInfo->alt_damage = uint32(damage);
+        damage = int32(std::lround(sObjectMgr->ScaleDamage(damageInfo->attacker,
+            damageInfo->target, float(damage), damageInfo->ratio)));
+    }
+
     int32 cleanDamage = 0;
     if (!spellInfo->HasAttribute(SPELL_ATTR4_IGNORE_DAMAGE_TAKEN_MODIFIERS) && Unit::IsDamageReducedByArmor(damageSchoolMask, spellInfo))
     {
@@ -1637,6 +1670,9 @@ void Unit::CalculateSpellDamageTaken(SpellNonMeleeDamage* damageInfo, int32 dama
 
     damageInfo->cleanDamage = std::max(0, cleanDamage);
     damageInfo->damage = std::max(0, damage);
+    damageInfo->scaledBeforeAbsorb = damageInfo->scaled;
+    if (damageInfo->scaled)
+        damageInfo->isValuesForTarget = true;
 
     // Calculate absorb resist
     if (damageInfo->damage > 0)
@@ -1669,9 +1705,11 @@ void Unit::DealSpellDamage(SpellNonMeleeDamage* damageInfo, bool durabilityLoss,
         return;
     }
 
+    SetSpellNonMeleeDamageForTarget(damageInfo);
+
     // Call default DealDamage
     CleanDamage cleanDamage(damageInfo->cleanDamage, damageInfo->absorb, BASE_ATTACK, MELEE_HIT_NORMAL);
-    Unit::DealDamage(this, victim, damageInfo->damage, &cleanDamage, SPELL_DIRECT_DAMAGE, SpellSchoolMask(damageInfo->schoolMask), spellProto, durabilityLoss, false, spell);
+    Unit::DealDamage(this, victim, damageInfo->damage, &cleanDamage, SPELL_DIRECT_DAMAGE, SpellSchoolMask(damageInfo->schoolMask), spellProto, durabilityLoss, false, spell, true);
 }
 
 // @todo for melee need create structure as in
@@ -1679,6 +1717,9 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
 {
     damageInfo->attacker         = this;
     damageInfo->target           = victim;
+    damageInfo->ratio            = 1.0f;
+    damageInfo->scaled           = false;
+    damageInfo->isValuesForTarget = false;
 
     for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
     {
@@ -1686,6 +1727,7 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
         damageInfo->damages[i].damage = 0;
         damageInfo->damages[i].absorb = 0;
         damageInfo->damages[i].resist = 0;
+        damageInfo->alt_damages[i] = { 0, 0, 0 };
     }
 
     damageInfo->attackType       = attackType;
@@ -1776,6 +1818,14 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
         if (victim->GetAI())
         {
             victim->GetAI()->OnCalculateMeleeDamageReceived(damage, this);
+        }
+
+        SetRatioInCalcDamageInfoForTarget(damageInfo);
+        if (damageInfo->scaled && !damageInfo->scaledBeforeAbsorb)
+        {
+            damageInfo->alt_damages[i].damage = damage;
+            damage = uint32(std::lround(sObjectMgr->ScaleDamage(damageInfo->attacker,
+                damageInfo->target, float(damage), damageInfo->ratio)));
         }
 
         // Calculate armor reduction
@@ -1918,7 +1968,7 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
         {
             damageInfo->HitInfo     |= HITINFO_GLANCING;
             damageInfo->TargetState  = VICTIMSTATE_HIT;
-            int32 leveldif = int32(victim->GetLevel()) - int32(GetLevel());
+            int32 leveldif = int32(victim->getLevelForTarget(this)) - int32(getLevelForTarget(victim));
             if (leveldif > 3)
                 leveldif = 3;
             float reducePercent = 1 - leveldif * 0.1f;
@@ -1974,7 +2024,7 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
         {
             damageInfo->procVictim |= PROC_FLAG_TAKEN_DAMAGE;
 
-            // Calculate absorb & resists
+        // Calculate absorb & resists
             DamageInfo dmgInfo(*damageInfo, i);
             Unit::CalcAbsorbResist(dmgInfo);
             damageInfo->damages[i].absorb = dmgInfo.GetAbsorb();
@@ -1993,6 +2043,10 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
             damageInfo->damages[i].damage = dmgInfo.GetDamage();
         }
     }
+
+    damageInfo->scaledBeforeAbsorb = damageInfo->scaled;
+    if (damageInfo->scaled)
+        damageInfo->isValuesForTarget = true;
 
     // set proper HitInfo flags
     if ((tmpHitInfo[0] & HITINFO_FULL_ABSORB) != 0)
@@ -2017,9 +2071,57 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
 
 }
 
+void Unit::SetRatioInCalcDamageInfoForTarget(CalcDamageInfo* damageInfo)
+{
+    if (!damageInfo || !sObjectMgr->IsScalable(damageInfo->attacker, damageInfo->target))
+        return;
+
+    sObjectMgr->ScaleDamage(damageInfo->attacker, damageInfo->target, 1.0f, damageInfo->ratio);
+    damageInfo->scaled = damageInfo->ratio != 1.0f;
+}
+
+void Unit::ComputeScaledDamageInfo(CalcDamageInfo* damageInfo)
+{
+    if (!damageInfo || !damageInfo->scaled || damageInfo->scaledBeforeAbsorb || damageInfo->isValuesForTarget)
+        return;
+
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
+        damageInfo->alt_damages[i].damage = uint32(std::lround(sObjectMgr->ScaleDamage(damageInfo->attacker, damageInfo->target, float(damageInfo->damages[i].damage), damageInfo->ratio)));
+}
+
+void Unit::SetDamageInfoForTarget(CalcDamageInfo* damageInfo)
+{
+    if (!damageInfo)
+        return;
+
+    SetRatioInCalcDamageInfoForTarget(damageInfo);
+    if (damageInfo->scaledBeforeAbsorb)
+        return;
+
+    ComputeScaledDamageInfo(damageInfo);
+    if (damageInfo->scaled && !damageInfo->isValuesForTarget)
+    {
+        for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
+            std::swap(damageInfo->damages[i].damage, damageInfo->alt_damages[i].damage);
+        damageInfo->isValuesForTarget = true;
+    }
+}
+
+void Unit::FormatDamageInfoForPacketSender(CalcDamageInfo* damageInfo)
+{
+    if (!damageInfo || !damageInfo->scaled || damageInfo->scaledBeforeAbsorb)
+        return;
+
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
+        std::swap(damageInfo->damages[i].damage, damageInfo->alt_damages[i].damage);
+    damageInfo->isValuesForTarget = !damageInfo->isValuesForTarget;
+}
+
 void Unit::DealMeleeDamage(CalcDamageInfo* damageInfo, bool durabilityLoss)
 {
     Unit* victim = damageInfo->target;
+
+    SetDamageInfoForTarget(damageInfo);
 
     auto canTakeMeleeDamage = [&]()
     {
@@ -2081,7 +2183,7 @@ void Unit::DealMeleeDamage(CalcDamageInfo* damageInfo, bool durabilityLoss)
 
         // Call default DealDamage
         CleanDamage cleanDamage(damageInfo->cleanDamage, damageInfo->damages[i].absorb, damageInfo->attackType, damageInfo->hitOutCome);
-        Unit::DealDamage(this, victim, damageInfo->damages[i].damage, &cleanDamage, DIRECT_DAMAGE, SpellSchoolMask(damageInfo->damages[i].damageSchoolMask), nullptr, durabilityLoss);
+        Unit::DealDamage(this, victim, damageInfo->damages[i].damage, &cleanDamage, DIRECT_DAMAGE, SpellSchoolMask(damageInfo->damages[i].damageSchoolMask), nullptr, durabilityLoss, false, nullptr, true);
     }
 
     // gain rage if attack is fully blocked, dodged or parried
@@ -2111,8 +2213,9 @@ void Unit::DealMeleeDamage(CalcDamageInfo* damageInfo, bool durabilityLoss)
         float Probability = 20.0f;
 
         // there is a newbie protection, at level 10 just 7% base chance; assuming linear function
-        if (victim->GetLevel() < 30)
-            Probability = 0.65f * victim->GetLevel() + 0.5f;
+        uint8 victimLevel = victim->getLevelForTarget(this); // Daze protection uses the attacker's target-relative victim level.
+        if (victimLevel < 30)
+            Probability = 0.65f * victimLevel + 0.5f;
 
         uint32 VictimDefense = victim->GetDefenseSkillValue();
         uint32 VictimAuraDefense = -victim->GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_MELEE_CRIT_CHANCE) * 25;
@@ -2139,6 +2242,55 @@ void Unit::DealMeleeDamage(CalcDamageInfo* damageInfo, bool durabilityLoss)
     // Do effect if any damage done to target
     if (damageInfo->damages[0].damage + damageInfo->damages[1].damage)
         DealDamageShieldDamage(victim);
+}
+
+void Unit::SetRatioInSpellNonMeleeDamageForTarget(SpellNonMeleeDamage* damageInfo)
+{
+    if (!damageInfo || !sObjectMgr->IsScalable(damageInfo->attacker, damageInfo->target))
+        return;
+
+    sObjectMgr->ScaleDamage(damageInfo->attacker, damageInfo->target, 1.0f, damageInfo->ratio);
+    damageInfo->scaled = damageInfo->ratio != 1.0f;
+}
+
+void Unit::ComputeScaledSpellNonMeleeDamage(SpellNonMeleeDamage* damageInfo)
+{
+    if (!damageInfo || !damageInfo->scaled || damageInfo->scaledBeforeAbsorb || damageInfo->isValuesForTarget)
+        return;
+
+    damageInfo->alt_damage = uint32(std::lround(sObjectMgr->ScaleDamage(damageInfo->attacker, damageInfo->target, float(damageInfo->damage), damageInfo->ratio)));
+    damageInfo->alt_absorb = uint32(std::lround(float(damageInfo->absorb) * damageInfo->ratio));
+    damageInfo->alt_resist = uint32(std::lround(float(damageInfo->resist) * damageInfo->ratio));
+    damageInfo->alt_blocked = uint32(std::lround(float(damageInfo->blocked) * damageInfo->ratio));
+}
+
+void Unit::SetSpellNonMeleeDamageForTarget(SpellNonMeleeDamage* damageInfo)
+{
+    if (!damageInfo)
+        return;
+
+    SetRatioInSpellNonMeleeDamageForTarget(damageInfo);
+    if (damageInfo->scaledBeforeAbsorb)
+        return;
+
+    ComputeScaledSpellNonMeleeDamage(damageInfo);
+    if (damageInfo->scaled && !damageInfo->isValuesForTarget)
+        SwitchDataForSpellNonMeleeDamage(damageInfo);
+}
+
+void Unit::SwitchDataForSpellNonMeleeDamage(SpellNonMeleeDamage* damageInfo)
+{
+    std::swap(damageInfo->damage, damageInfo->alt_damage);
+    std::swap(damageInfo->absorb, damageInfo->alt_absorb);
+    std::swap(damageInfo->resist, damageInfo->alt_resist);
+    std::swap(damageInfo->blocked, damageInfo->alt_blocked);
+    damageInfo->isValuesForTarget = !damageInfo->isValuesForTarget;
+}
+
+void Unit::FormatSpellNonMeleeDamageForPacketSender(SpellNonMeleeDamage* damageInfo, bool /*forAttacker*/)
+{
+    if (damageInfo && damageInfo->scaled && !damageInfo->scaledBeforeAbsorb)
+        SwitchDataForSpellNonMeleeDamage(damageInfo);
 }
 
 void Unit::DealDamageShieldDamage(Unit* victim)
@@ -2172,6 +2324,13 @@ void Unit::DealDamageShieldDamage(Unit* victim)
         }
 
         uint32 absorb = 0;
+        float ratio = 1.0f;
+        if (sObjectMgr->IsScalable(victim, this))
+            sObjectMgr->ScaleDamage(victim, this, 1.0f, ratio);
+
+        // Scale before absorb effects consume the reflected damage so the packet,
+        // shield depletion, mana cost, and health loss use the same value.
+        damage = uint32(std::lround(sObjectMgr->ScaleDamage(victim, this, float(damage))));
 
         DamageInfo dmgInfo(victim, this, damage, i_spellProto, i_spellProto->GetSchoolMask(), SPELL_DIRECT_DAMAGE);
         Unit::CalcAbsorbResist(dmgInfo);
@@ -2179,19 +2338,22 @@ void Unit::DealDamageShieldDamage(Unit* victim)
         damage = dmgInfo.GetDamage();
 
         Unit::DealDamageMods(this, damage, &absorb);
+        uint32 logDamage = damage;
+        if (sObjectMgr->UsesCreatureStorageScaling(victim, this) && ratio > 0.0f && ratio != 1.0f)
+            logDamage = uint32(std::lround(float(logDamage) / ratio));
 
         /// @todo: Move this to a packet handler
         WorldPacket data(SMSG_SPELLDAMAGESHIELD, (8 + 8 + 4 + 4 + 4 + 4));
         data << victim->GetGUID();
         data << GetGUID();
         data << uint32(i_spellProto->Id);
-        data << uint32(damage);                  // Damage
-        int32 overkill = int32(damage) - int32(GetHealth());
+        data << uint32(logDamage);               // Damage
+        int32 overkill = int32(logDamage) - int32(GetHealthForTarget(victim));
         data << uint32(overkill > 0 ? overkill : 0); // Overkill
         data << uint32(i_spellProto->GetSchoolMask());
         victim->SendMessageToSet(&data, true);
 
-        Unit::DealDamage(victim, this, damage, 0, SPELL_DIRECT_DAMAGE, i_spellProto->GetSchoolMask(), i_spellProto, true);
+        Unit::DealDamage(victim, this, damage, 0, SPELL_DIRECT_DAMAGE, i_spellProto->GetSchoolMask(), i_spellProto, true, false, nullptr, true);
     }
 }
 
@@ -2230,6 +2392,9 @@ uint32 Unit::CalcArmorReducedDamage(Unit const* attacker, Unit const* victim, co
 {
     float armor = float(victim->GetArmor());
 
+    if (attacker)
+        armor = sObjectMgr->ScaleArmor(const_cast<Unit*>(attacker), const_cast<Unit*>(victim), uint32(armor));
+
     // Ignore enemy armor by SPELL_AURA_MOD_TARGET_RESISTANCE aura
     if (attacker)
     {
@@ -2267,10 +2432,11 @@ uint32 Unit::CalcArmorReducedDamage(Unit const* attacker, Unit const* victim, co
             });
 
             float maxArmorPen = 0;
-            if (victim->GetLevel() < 60)
-                maxArmorPen = float(400 + 85 * victim->GetLevel());
+            uint8 victimLevel = victim->getLevelForTarget(attacker);
+            if (victimLevel < 60)
+                maxArmorPen = float(400 + 85 * victimLevel);
             else
-                maxArmorPen = 400 + 85 * victim->GetLevel() + 4.5f * 85 * (victim->GetLevel() - 59);
+                maxArmorPen = 400 + 85 * victimLevel + 4.5f * 85 * (victimLevel - 59);
 
             // Cap armor penetration to this number
             maxArmorPen = std::min((armor + maxArmorPen) / 3, armor);
@@ -2284,7 +2450,7 @@ uint32 Unit::CalcArmorReducedDamage(Unit const* attacker, Unit const* victim, co
     if (armor < 0.0f)
         armor = 0.0f;
 
-    float levelModifier = attacker ? attacker->GetLevel() : attackerLevel;
+    float levelModifier = attacker ? attacker->getLevelForTarget(victim) : attackerLevel;
     if (levelModifier > 59)
         levelModifier = levelModifier + (4.5f * (levelModifier - 59));
 
@@ -2317,14 +2483,15 @@ float Unit::GetEffectiveResistChance(Unit const* owner, SpellSchoolMask schoolMa
     }
 
     victimResistance = std::max(victimResistance, 0.0f);
-    uint8 effectiveCasterLevel = owner ? owner->GetLevel() : casterLevel;
+    uint8 effectiveCasterLevel = owner ? owner->getLevelForTarget(victim) : casterLevel;
+    uint8 effectiveVictimLevel = owner ? victim->getLevelForTarget(owner) : victim->GetLevel();
 
     if (effectiveCasterLevel && (!spellInfo || !spellInfo->HasAttribute(SPELL_ATTR0_CU_BINARY_SPELL)))
-        victimResistance += std::max(static_cast<float>(victim->GetLevel() - effectiveCasterLevel) * 5.0f, 0.0f);
+        victimResistance += std::max(static_cast<float>(effectiveVictimLevel - effectiveCasterLevel) * 5.0f, 0.0f);
 
     // Per EJ research, the resistance constant is based on the caster's level. It should be equal
     // to 400 for a level 80 caster and 506.5 for a level 83 caster (boss).
-    float level = static_cast<float>(effectiveCasterLevel ? effectiveCasterLevel : victim->GetLevel());
+    float level = static_cast<float>(effectiveCasterLevel ? effectiveCasterLevel : effectiveVictimLevel);
     float resistanceConstant = 0.0f;
 
     if (level > 60.0f)
@@ -2611,7 +2778,7 @@ void Unit::CalcAbsorbResist(DamageInfo& dmgInfo, bool Splited, uint8 casterLevel
             if (splitDamage && attacker && !attacker->IsFriendlyTo(caster))
                 attacker->AtTargetAttacked(caster, !spellInfo || spellInfo->HasInitialAggro());
 
-            Unit::DealDamage(attacker, caster, splitted, &cleanDamage, DIRECT_DAMAGE, schoolMask, splitSpellInfo, false);
+            Unit::DealDamage(attacker, caster, splitted, &cleanDamage, DIRECT_DAMAGE, schoolMask, splitSpellInfo, false, false, nullptr, true);
         }
 
         // We're going to call functions which can modify content of the list during iteration over it's elements
@@ -2647,6 +2814,13 @@ void Unit::CalcAbsorbResist(DamageInfo& dmgInfo, bool Splited, uint8 casterLevel
                 dmgInfo.AbsorbDamage(splitDamage);
             else
                 splitSchoolMask = SPELL_SCHOOL_MASK_NATURE;
+
+            float sourceRatio = 1.0f;
+            sObjectMgr->ScaleDamage(dmgInfo.GetAttacker(), victim, 1.0f, sourceRatio);
+            if (sourceRatio > 0.0f)
+                splitDamage = uint32(std::lround(float(splitDamage) / sourceRatio));
+
+            splitDamage = uint32(std::lround(sObjectMgr->ScaleDamage(dmgInfo.GetAttacker(), caster, float(splitDamage))));
 
             uint32 splitted = splitDamage;
             uint32 splitted_absorb = 0;
@@ -2689,7 +2863,7 @@ void Unit::CalcAbsorbResist(DamageInfo& dmgInfo, bool Splited, uint8 casterLevel
             if (splitDamage && attacker && !attacker->IsFriendlyTo(caster))
                 attacker->AtTargetAttacked(caster, !spellInfo || spellInfo->HasInitialAggro());
 
-            Unit::DealDamage(attacker, caster, splitted, &cleanDamage, DIRECT_DAMAGE, splitSchoolMask, splitSpellInfo, false);
+            Unit::DealDamage(attacker, caster, splitted, &cleanDamage, DIRECT_DAMAGE, splitSchoolMask, splitSpellInfo, false, false, nullptr, true);
         }
     }
 }
@@ -2833,7 +3007,7 @@ void Unit::AttackerStateUpdate(Unit* victim, WeaponAttackType attType /*= BASE_A
     {
         // attack can be redirected to another target
         victim = GetMeleeHitRedirectTarget(victim);
-        CalcDamageInfo damageInfo;
+        CalcDamageInfo damageInfo{};
         CalculateMeleeDamage(victim, &damageInfo, attType, sittingVictim);
 
         // Send log damage message to client
@@ -2841,6 +3015,9 @@ void Unit::AttackerStateUpdate(Unit* victim, WeaponAttackType attType /*= BASE_A
         {
             Unit::DealDamageMods(victim, damageInfo.damages[i].damage, &damageInfo.damages[i].absorb);
         }
+
+        // Prepare the target-relative values before serializing the combat result.
+        SetDamageInfoForTarget(&damageInfo);
 
         // Related to sparring system. Allow attack animations even if there are no damages
         if (victim->CanSparringWith(damageInfo.attacker))
@@ -3124,7 +3301,7 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
     if (attType != RANGED_ATTACK &&
             (IsPlayer() || IsPet()) &&
             !victim->IsPlayer() && !victim->IsPet() &&
-            GetLevel() < victim->getLevelForTarget(this))
+            getLevelForTarget(victim) < victim->getLevelForTarget(this))
     {
         // cap possible value (with bonuses > max skill)
         int32 skill = attackerWeaponSkill;
@@ -3251,7 +3428,7 @@ float Unit::CalculateLevelPenalty(SpellInfo const* spellProto) const
     if (spellProto->SpellLevel < 20)
         LvlPenalty = (20.0f - spellProto->SpellLevel) * 3.75f;
 
-    float LvlFactor = (float(spellProto->SpellLevel) + 6.0f) / float(GetLevel());
+    float LvlFactor = (float(spellProto->SpellLevel) + 6.0f) / float(GetLevel()); // Spell skill scaling uses the casting unit's native level.
     if (LvlFactor > 1.0f)
         LvlFactor = 1.0f;
 
@@ -3365,7 +3542,7 @@ SpellMissInfo Unit::MeleeSpellHitResult(Unit* victim, SpellInfo const* spellInfo
     int32 attackerWeaponSkill;
     // skill value for these spells (for example judgements) is 5* level
     if (spellInfo->DmgClass == SPELL_DAMAGE_CLASS_RANGED && !spellInfo->IsRangedWeaponSpell())
-        attackerWeaponSkill = GetLevel() * 5;
+        attackerWeaponSkill = getLevelForTarget(victim) * 5;
     // bonus from skills is 0.04% per skill Diff
     else
         attackerWeaponSkill = int32(GetWeaponSkillValue(attType, victim));
@@ -6472,6 +6649,15 @@ void Unit::SendSpellNonMeleeReflectLog(SpellNonMeleeDamage* log, Unit* attacker)
     // If we are in cheat mode we swap absorb with damage and set damage to 0, this way we can still debug damage but our HP bar will not drop
     uint32 damage = log->damage;
     uint32 absorb = log->absorb;
+    uint32 resist = log->resist;
+    uint32 blocked = log->blocked;
+    if (log->scaled && log->scaledBeforeAbsorb && sObjectMgr->UsesCreatureStorageScaling(log->attacker, log->target) && log->ratio > 0.0f)
+    {
+        damage = uint32(std::lround(float(damage) / log->ratio));
+        absorb = uint32(std::lround(float(absorb) / log->ratio));
+        resist = uint32(std::lround(float(resist) / log->ratio));
+        blocked = uint32(std::lround(float(blocked) / log->ratio));
+    }
     if (log->target->IsPlayer() && log->target->ToPlayer()->GetCommandStatus(CHEAT_GOD))
     {
         absorb = damage;
@@ -6481,14 +6667,14 @@ void Unit::SendSpellNonMeleeReflectLog(SpellNonMeleeDamage* log, Unit* attacker)
     data << attacker->GetPackGUID();
     data << uint32(log->spellInfo->Id);
     data << uint32(damage);                                 // damage amount
-    int32 overkill = damage - log->target->GetHealth();
+    int32 overkill = damage - log->target->GetHealthForTarget(attacker);
     data << uint32(overkill > 0 ? overkill : 0);            // overkill
     data << uint8 (log->schoolMask);                        // damage school
     data << uint32(absorb);                                 // AbsorbedDamage
-    data << uint32(log->resist);                            // resist
+    data << uint32(resist);                                 // resist
     data << uint8 (log->physicalLog);                       // if 1, then client show spell name (example: %s's ranged shot hit %s for %u school or %s suffers %u school damage from %s's spell_name
     data << uint8 (log->unused);                            // unused
-    data << uint32(log->blocked);                           // blocked
+    data << uint32(blocked);                                // blocked
     data << uint32(log->HitInfo);
     data << uint8 (0);                                      // flag to use extend data
     ToPlayer()->SendDirectMessage(&data);
@@ -6500,6 +6686,15 @@ void Unit::SendSpellNonMeleeDamageLog(SpellNonMeleeDamage* log)
     //IF we are in cheat mode we swap absorb with damage and set damage to 0, this way we can still debug damage but our hp bar will not drop
     uint32 damage = log->damage;
     uint32 absorb = log->absorb;
+    uint32 resist = log->resist;
+    uint32 blocked = log->blocked;
+    if (log->scaled && log->scaledBeforeAbsorb && sObjectMgr->UsesCreatureStorageScaling(log->attacker, log->target) && log->ratio > 0.0f)
+    {
+        damage = uint32(std::lround(float(damage) / log->ratio));
+        absorb = uint32(std::lround(float(absorb) / log->ratio));
+        resist = uint32(std::lround(float(resist) / log->ratio));
+        blocked = uint32(std::lround(float(blocked) / log->ratio));
+    }
     if (log->target->IsPlayer() && log->target->ToPlayer()->GetCommandStatus(CHEAT_GOD))
     {
         absorb = damage;
@@ -6509,14 +6704,14 @@ void Unit::SendSpellNonMeleeDamageLog(SpellNonMeleeDamage* log)
     data << log->attacker->GetPackGUID();
     data << uint32(log->spellInfo->Id);
     data << uint32(damage);                                 // damage amount
-    int32 overkill = damage - log->target->GetHealth();
+    int32 overkill = damage - log->target->GetHealthForTarget(log->attacker);
     data << uint32(overkill > 0 ? overkill : 0);            // overkill
     data << uint8 (log->schoolMask);                        // damage school
     data << uint32(absorb);                                 // AbsorbedDamage
-    data << uint32(log->resist);                            // resist
+    data << uint32(resist);                                 // resist
     data << uint8 (log->physicalLog);                       // if 1, then client show spell name (example: %s's ranged shot hit %s for %u school or %s suffers %u school damage from %s's spell_name
     data << uint8 (log->unused);                            // unused
-    data << uint32(log->blocked);                           // blocked
+    data << uint32(blocked);                                // blocked
     data << uint32(log->HitInfo);
     data << uint8(log->HitInfo & (SPELL_HIT_TYPE_CRIT_DEBUG | SPELL_HIT_TYPE_HIT_DEBUG | SPELL_HIT_TYPE_ATTACK_TABLE_DEBUG));
     //if (log->HitInfo & SPELL_HIT_TYPE_CRIT_DEBUG)
@@ -6543,6 +6738,17 @@ void Unit::SendSpellNonMeleeDamageLog(SpellNonMeleeDamage* log)
 
 void Unit::SendSpellNonMeleeDamageLog(Unit* target, SpellInfo const* spellInfo, uint32 Damage, SpellSchoolMask damageSchoolMask, uint32 AbsorbedDamage, uint32 Resist, bool PhysicalDamage, uint32 Blocked, bool CriticalHit /*= false*/, bool Split /*= false*/)
 {
+    float ratio = 1.0f;
+    if (sObjectMgr->IsScalable(this, target))
+        sObjectMgr->ScaleDamage(this, target, 1.0f, ratio);
+    if (sObjectMgr->UsesCreatureStorageScaling(this, target) && ratio > 0.0f && ratio != 1.0f)
+    {
+        Damage = uint32(std::lround(float(Damage) / ratio));
+        AbsorbedDamage = uint32(std::lround(float(AbsorbedDamage) / ratio));
+        Resist = uint32(std::lround(float(Resist) / ratio));
+        Blocked = uint32(std::lround(float(Blocked) / ratio));
+    }
+
     SpellNonMeleeDamage log(this, target, spellInfo, damageSchoolMask);
     log.damage = Damage;
     log.absorb = AbsorbedDamage;
@@ -6598,6 +6804,23 @@ void Unit::ProcSkillsAndAuras(Unit* actor, Unit* victim, uint32 procAttacker, ui
 void Unit::SendPeriodicAuraLog(SpellPeriodicAuraLogInfo* pInfo)
 {
     AuraEffect const* aura = pInfo->auraEff;
+    Unit* caster = aura->GetCaster();
+    bool const isDamage = aura->GetAuraType() == SPELL_AURA_PERIODIC_DAMAGE || aura->GetAuraType() == SPELL_AURA_PERIODIC_DAMAGE_PERCENT;
+    bool const isHeal = aura->GetAuraType() == SPELL_AURA_PERIODIC_HEAL || aura->GetAuraType() == SPELL_AURA_OBS_MOD_HEALTH;
+    bool const isPower = aura->GetAuraType() == SPELL_AURA_OBS_MOD_POWER || aura->GetAuraType() == SPELL_AURA_PERIODIC_ENERGIZE || aura->GetAuraType() == SPELL_AURA_PERIODIC_MANA_LEECH;
+    float ratio = 1.0f;
+    bool usesCreatureStorage = false;
+    if (caster && (isDamage || isHeal || isPower) && sObjectMgr->IsScalable(caster, this))
+    {
+        usesCreatureStorage = sObjectMgr->UsesCreatureStorageScaling(caster, this);
+        if (isPower)
+            sObjectMgr->ScaleDamage(caster, this, 1.0f, ratio, SPELLTYPE_POWER);
+        else if (isHeal)
+            sObjectMgr->ScaleDamage(caster, this, 1.0f, ratio, SPELLTYPE_HEAL);
+        else
+            sObjectMgr->ScaleDamage(caster, this, 1.0f, ratio);
+    }
+
     WorldPacket data(SMSG_PERIODICAURALOG, 30);
     data << GetPackGUID();
     data << aura->GetCasterGUID().WriteAsPacked();
@@ -6612,6 +6835,15 @@ void Unit::SendPeriodicAuraLog(SpellPeriodicAuraLogInfo* pInfo)
                 //IF we are in cheat mode we swap absorb with damage and set damage to 0, this way we can still debug damage but our hp bar will not drop
                 uint32 damage = pInfo->damage;
                 uint32 absorb = pInfo->absorb;
+                uint32 overDamage = pInfo->overDamage;
+                uint32 resist = pInfo->resist;
+                if (usesCreatureStorage && ratio > 0.0f && ratio != 1.0f)
+                {
+                    damage = uint32(std::lround(float(damage) / ratio));
+                    absorb = uint32(std::lround(float(absorb) / ratio));
+                    overDamage = uint32(std::lround(float(overDamage) / ratio));
+                    resist = uint32(std::lround(float(resist) / ratio));
+                }
                 if (IsPlayer() && ToPlayer()->GetCommandStatus(CHEAT_GOD))
                 {
                     absorb = damage;
@@ -6619,28 +6851,28 @@ void Unit::SendPeriodicAuraLog(SpellPeriodicAuraLogInfo* pInfo)
                 }
 
                 data << uint32(damage);                         // damage
-                data << uint32(pInfo->overDamage);              // overkill?
+                data << uint32(overDamage);                     // overkill?
                 data << uint32(aura->GetSpellInfo()->GetSchoolMask());
                 data << uint32(absorb);                         // absorb
-                data << uint32(pInfo->resist);                  // resist
+                data << uint32(resist);                         // resist
                 data << uint8(pInfo->critical);                 // new 3.1.2 critical tick
             }
             break;
         case SPELL_AURA_PERIODIC_HEAL:
         case SPELL_AURA_OBS_MOD_HEALTH:
-            data << uint32(pInfo->damage);                  // damage
-            data << uint32(pInfo->overDamage);              // overheal
-            data << uint32(pInfo->absorb);                  // absorb
+            data << uint32(usesCreatureStorage && ratio > 0.0f ? std::lround(float(pInfo->damage) / ratio) : pInfo->damage);         // damage
+            data << uint32(usesCreatureStorage && ratio > 0.0f ? std::lround(float(pInfo->overDamage) / ratio) : pInfo->overDamage); // overheal
+            data << uint32(usesCreatureStorage && ratio > 0.0f ? std::lround(float(pInfo->absorb) / ratio) : pInfo->absorb);         // absorb
             data << uint8(pInfo->critical);                 // new 3.1.2 critical tick
             break;
         case SPELL_AURA_OBS_MOD_POWER:
         case SPELL_AURA_PERIODIC_ENERGIZE:
             data << uint32(aura->GetMiscValue());           // power type
-            data << uint32(pInfo->damage);                  // damage
+            data << uint32(usesCreatureStorage && ratio > 0.0f && ratio != 1.0f ? std::lround(float(pInfo->damage) / ratio) : pInfo->damage); // damage
             break;
         case SPELL_AURA_PERIODIC_MANA_LEECH:
             data << uint32(aura->GetMiscValue());           // power type
-            data << uint32(pInfo->damage);                  // amount
+            data << uint32(usesCreatureStorage && ratio > 0.0f && ratio != 1.0f ? std::lround(float(pInfo->damage) / ratio) : pInfo->damage); // amount
             data << float(pInfo->multiplier);               // gain multiplier
             break;
         default:
@@ -6677,17 +6909,28 @@ void Unit::SendAttackStateUpdate(CalcDamageInfo* damageInfo)
 
     uint32 tmpDamage[MAX_ITEM_PROTO_DAMAGES] = { };
     uint32 tmpAbsorb[MAX_ITEM_PROTO_DAMAGES] = { };
+    uint32 tmpResist[MAX_ITEM_PROTO_DAMAGES] = { };
+    uint32 tmpBlocked = damageInfo->blocked_amount;
     for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
     {
         //IF we are in cheat mode we swap absorb with damage and set damage to 0, this way we can still debug damage but our hp bar will not drop
         tmpDamage[i] = damageInfo->damages[i].damage;
         tmpAbsorb[i] = damageInfo->damages[i].absorb;
+        tmpResist[i] = damageInfo->damages[i].resist;
+        if (damageInfo->scaled && damageInfo->scaledBeforeAbsorb && sObjectMgr->UsesCreatureStorageScaling(damageInfo->attacker, damageInfo->target) && damageInfo->ratio > 0.0f)
+        {
+            tmpDamage[i] = uint32(std::lround(float(tmpDamage[i]) / damageInfo->ratio));
+            tmpAbsorb[i] = uint32(std::lround(float(tmpAbsorb[i]) / damageInfo->ratio));
+            tmpResist[i] = uint32(std::lround(float(tmpResist[i]) / damageInfo->ratio));
+        }
         if (damageInfo->target->IsPlayer() && damageInfo->target->ToPlayer()->GetCommandStatus(CHEAT_GOD))
         {
             tmpAbsorb[i] = tmpDamage[i];
             tmpDamage[i] = 0;
         }
     }
+    if (damageInfo->scaled && damageInfo->scaledBeforeAbsorb && sObjectMgr->UsesCreatureStorageScaling(damageInfo->attacker, damageInfo->target) && damageInfo->ratio > 0.0f)
+        tmpBlocked = uint32(std::lround(float(tmpBlocked) / damageInfo->ratio));
 
     uint32 count = 1;
     if (tmpDamage[1] || tmpAbsorb[1] || damageInfo->damages[1].resist)
@@ -6701,7 +6944,7 @@ void Unit::SendAttackStateUpdate(CalcDamageInfo* damageInfo)
     data << damageInfo->attacker->GetPackGUID();
     data << damageInfo->target->GetPackGUID();
     data << uint32(tmpDamage[0] + tmpDamage[1]);                    // Full damage
-    int32 overkill = tmpDamage[0] + tmpDamage[1] - damageInfo->target->GetHealth();
+    int32 overkill = tmpDamage[0] + tmpDamage[1] - damageInfo->target->GetHealthForTarget(damageInfo->attacker);
     data << uint32(overkill < 0 ? 0 : overkill);                    // Overkill
     data << uint8(count);                                           // Sub damage count
 
@@ -6724,7 +6967,7 @@ void Unit::SendAttackStateUpdate(CalcDamageInfo* damageInfo)
     {
         for (uint32 i = 0; i < count; ++i)
         {
-            data << uint32(damageInfo->damages[i].resist);          // Resist
+            data << uint32(tmpResist[i]);                           // Resist
         }
     }
 
@@ -6733,7 +6976,7 @@ void Unit::SendAttackStateUpdate(CalcDamageInfo* damageInfo)
     data << uint32(0);  // Melee spellid
 
     if (damageInfo->HitInfo & HITINFO_BLOCK)
-        data << uint32(damageInfo->blocked_amount);
+        data << uint32(tmpBlocked);
 
     if (damageInfo->HitInfo & HITINFO_RAGE_GAIN)
         data << uint32(0);
@@ -7889,6 +8132,17 @@ int32 Unit::DealHeal(Unit* healer, Unit* victim, uint32 addhealth)
     return gain;
 }
 
+void HealInfo::ScaleValuesForTarget()
+{
+    if (m_hasBeenScaled || !m_healer || !m_target)
+        return;
+
+    m_altHeal = uint32(std::lround(sObjectMgr->ScaleDamage(m_healer, m_target, float(m_heal), m_ratio, SPELLTYPE_HEAL)));
+    m_altAbsorb = uint32(std::lround(float(m_absorb) * m_ratio));
+    m_hasBeenScaled = m_ratio != 1.0f;
+    m_isValuesForTarget = true;
+}
+
 bool RedirectSpellEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
 {
     if (Unit* auraOwner = ObjectAccessor::GetUnit(_self, _auraOwnerGUID))
@@ -8122,16 +8376,30 @@ void Unit::UnsummonAllTotems(bool onDeath /*= false*/)
 
 void Unit::SendHealSpellLog(HealInfo const& healInfo, bool critical)
 {
-    uint32 overheal = healInfo.GetHeal() - healInfo.GetEffectiveHeal();
+    uint32 heal = healInfo.GetHeal();
+    uint32 effectiveHeal = healInfo.GetEffectiveHeal();
+    uint32 absorb = healInfo.GetAbsorb();
+    if (sObjectMgr->UsesCreatureStorageScaling(healInfo.GetHealer(), healInfo.GetTarget()))
+    {
+        float ratio = 1.0f;
+        sObjectMgr->ScaleDamage(healInfo.GetHealer(), healInfo.GetTarget(), 1.0f, ratio, SPELLTYPE_HEAL);
+        if (ratio > 0.0f)
+        {
+            heal = uint32(std::lround(float(heal) / ratio));
+            effectiveHeal = uint32(std::lround(float(effectiveHeal) / ratio));
+            absorb = uint32(std::lround(float(absorb) / ratio));
+        }
+    }
+    uint32 overheal = heal - std::min(heal, effectiveHeal);
 
     // we guess size
     WorldPacket data(SMSG_SPELLHEALLOG, (8 + 8 + 4 + 4 + 4 + 4 + 1 + 1));
     data << healInfo.GetTarget()->GetPackGUID();
     data << GetPackGUID();
     data << uint32(healInfo.GetSpellInfo()->Id);
-    data << uint32(healInfo.GetHeal());
+    data << uint32(heal);
     data << uint32(overheal);
-    data << uint32(healInfo.GetAbsorb()); // Absorb amount
+    data << uint32(absorb); // Absorb amount
     data << uint8(critical ? 1 : 0);
     data << uint8(0); // unused
     SendMessageToSet(&data, true);
@@ -8142,6 +8410,7 @@ int32 Unit::HealBySpell(HealInfo& healInfo, bool critical)
     uint32 heal = healInfo.GetHeal();
     sScriptMgr->ModifyHealReceived(this, healInfo.GetTarget(), heal, healInfo.GetSpellInfo());
     healInfo.SetHeal(heal);
+    healInfo.ScaleValuesForTarget();
 
     // calculate heal absorb and reduce healing
     CalcHealAbsorb(healInfo);
@@ -8384,7 +8653,7 @@ float Unit::SpellPctDamageModsDone(Unit* victim, SpellInfo const* spellProto, Da
                 if (victim->HasAuraState(AURA_STATE_FROZEN, spellProto, this))
                 {
                     // Glyph of Ice Lance
-                    if (owner->HasAura(56377) && victim->GetLevel() > owner->GetLevel())
+                    if (owner->HasAura(56377) && victim->getLevelForTarget(owner) > owner->getLevelForTarget(victim))
                         DoneTotalMod *= 4.0f;
                     else
                         DoneTotalMod *= 3.0f;
@@ -11211,12 +11480,12 @@ bool Unit::CanHaveThreatList(bool skipAliveCheck) const
 
 //======================================================================
 
-void Unit::AddThreat(Unit* victim, float fThreat, SpellSchoolMask /*schoolMask*/, SpellInfo const* threatSpell)
+void Unit::AddThreat(Unit* victim, float fThreat, SpellSchoolMask schoolMask, SpellInfo const* threatSpell, bool isScaled)
 {
     // Only mobs can manage threat lists
     if (CanHaveThreatList() && !HasUnitState(UNIT_STATE_EVADE))
     {
-        m_threatManager.AddThreat(victim, fThreat, threatSpell);
+        m_threatManager.AddThreat(victim, fThreat, threatSpell, false, false, isScaled, schoolMask);
     }
 }
 
@@ -12010,6 +12279,72 @@ void Unit::SetHealth(uint32 val)
                         player->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_CUR_HP);
                 }
         }
+    }
+}
+
+uint32 Unit::GetHealthForTarget(Unit const* target) const
+{
+    uint32 health = GetHealth();
+
+    if (!target || target == this || !IsCreature() || !target->IsPlayer())
+        return health;
+
+    Creature const* creature = ToCreature();
+    uint8 scaledLevel = creature->getLevelForTarget(target);
+    float scale = sObjectMgr->GetCreatureBaseStatRatio(creature, scaledLevel, SPELLTYPE_DAMAGE);
+    return uint32(std::min<double>(double(health) * scale, std::numeric_limits<uint32>::max()));
+}
+
+uint32 Unit::GetMaxHealthForTarget(Unit const* target) const
+{
+    uint32 maxHealth = GetMaxHealth();
+
+    if (!target || target == this || !IsCreature() || !target->IsPlayer())
+        return maxHealth;
+
+    Creature const* creature = ToCreature();
+    uint8 scaledLevel = creature->getLevelForTarget(target);
+    float scale = sObjectMgr->GetCreatureBaseStatRatio(creature, scaledLevel, SPELLTYPE_DAMAGE);
+    return uint32(std::min<double>(double(maxHealth) * scale, std::numeric_limits<uint32>::max()));
+}
+
+uint32 Unit::GetPowerForTarget(Unit const* target, Powers power) const
+{
+    uint32 currentPower = GetPower(power);
+
+    if (power != POWER_MANA || !target || target == this || !IsCreature() || !target->IsPlayer())
+        return currentPower;
+
+    Creature const* creature = ToCreature();
+    uint8 scaledLevel = creature->getLevelForTarget(target);
+    float scale = sObjectMgr->GetCreatureBaseStatRatio(creature, scaledLevel, SPELLTYPE_POWER);
+    return std::min<uint32>(uint32(std::lround(double(currentPower) * scale)), GetMaxPowerForTarget(target, power));
+}
+
+uint32 Unit::GetMaxPowerForTarget(Unit const* target, Powers power) const
+{
+    uint32 maxPower = GetMaxPower(power);
+
+    if (power != POWER_MANA || !target || target == this || !IsCreature() || !target->IsPlayer())
+        return maxPower;
+
+    Creature const* creature = ToCreature();
+    uint8 scaledLevel = creature->getLevelForTarget(target);
+    float scale = sObjectMgr->GetCreatureBaseStatRatio(creature, scaledLevel, SPELLTYPE_POWER);
+    return uint32(std::min<double>(double(maxPower) * scale, std::numeric_limits<uint32>::max()));
+}
+
+void Unit::ForceLevelScalingUpdate()
+{
+    InvalidateValuesUpdateCache();
+    ForceValuesUpdateAtIndex(UNIT_FIELD_LEVEL);
+    ForceValuesUpdateAtIndex(UNIT_FIELD_HEALTH);
+    ForceValuesUpdateAtIndex(UNIT_FIELD_MAXHEALTH);
+
+    for (uint8 power = 0; power < MAX_POWERS; ++power)
+    {
+        ForceValuesUpdateAtIndex(UNIT_FIELD_POWER1 + power);
+        ForceValuesUpdateAtIndex(UNIT_FIELD_MAXPOWER1 + power);
     }
 }
 
@@ -13394,7 +13729,7 @@ Pet* Unit::CreateTamedPetFrom(Creature* creatureTarget, uint32 spell_id)
         return nullptr;
     }
 
-    uint8 level = creatureTarget->GetLevel() + 5 < GetLevel() ? (GetLevel() - 5) : creatureTarget->GetLevel();
+    uint8 level = creatureTarget->getLevelForTarget(this) + 5 < getLevelForTarget(creatureTarget) ? (getLevelForTarget(creatureTarget) - 5) : creatureTarget->getLevelForTarget(this);
 
     if (!InitTamedPet(pet, level, spell_id))
     {
@@ -15501,7 +15836,6 @@ void Unit::_ExitVehicle(Position const* exitPosition)
 
     if (player)
     {
-        player->ResummonPetTemporaryUnSummonedIfAny();
         player->SetCanTeleport(true);
     }
 }
@@ -15689,10 +16023,10 @@ void Unit::RewardRage(uint32 damage, uint32 weaponSpeedHitFactor, bool attacker)
     // Rage formulae https://wowwiki-archive.fandom.com/wiki/Rage#Formulae
     float addRage;
 
-    float rageconversion = ((0.0091107836f * GetLevel() * GetLevel()) + 3.225598133f * GetLevel()) + 4.2652911f;
+    float rageconversion = ((0.0091107836f * GetLevel() * GetLevel()) + 3.225598133f * GetLevel()) + 4.2652911f; // Rage conversion is a player-level progression formula.
 
     // Unknown if correct, but lineary adjust rage conversion above level 70
-    if (GetLevel() > 70)
+    if (GetLevel() > 70) // The post-70 adjustment uses the player's native level.
         rageconversion += 13.27f * (GetLevel() - 70);
 
     if (attacker)
@@ -16469,6 +16803,27 @@ void Unit::BuildValuesUpdate(uint8 updateType, ByteBuffer* data, Player* target)
                 cacheValue.posPointers.UnitFieldFlagsPos = int32(fieldBuffer.wpos());
                 fieldBuffer << m_uint32Values[UNIT_FIELD_FLAGS];
             }
+            else if (index == UNIT_FIELD_HEALTH)
+            {
+                cacheValue.posPointers.UnitFieldHealthPos = int32(fieldBuffer.wpos());
+                fieldBuffer << m_uint32Values[UNIT_FIELD_HEALTH];
+            }
+            else if (index == UNIT_FIELD_MAXHEALTH)
+            {
+                cacheValue.posPointers.UnitFieldMaxHealthPos = int32(fieldBuffer.wpos());
+                fieldBuffer << m_uint32Values[UNIT_FIELD_MAXHEALTH];
+            }
+            else if ((index >= UNIT_FIELD_POWER1 && index < UNIT_FIELD_POWER1 + MAX_POWERS) ||
+                     (index >= UNIT_FIELD_MAXPOWER1 && index < UNIT_FIELD_MAXPOWER1 + MAX_POWERS))
+            {
+                cacheValue.posPointers.other[index] = static_cast<uint32>(fieldBuffer.wpos());
+                fieldBuffer << m_uint32Values[index];
+            }
+            else if (index == UNIT_FIELD_LEVEL)
+            {
+                cacheValue.posPointers.UnitFieldLevelPos = int32(fieldBuffer.wpos());
+                fieldBuffer << m_uint32Values[UNIT_FIELD_LEVEL];
+            }
             // use modelid_a if not gm, _h if gm for CREATURE_FLAG_EXTRA_TRIGGER creatures
             else if (index == UNIT_FIELD_DISPLAYID)
             {
@@ -16529,6 +16884,13 @@ void Unit::PatchValuesUpdate(ByteBuffer& valuesUpdateBuf, BuildValuesCachePosPoi
     {
         uint32 appendValue = m_uint32Values[UNIT_NPC_FLAGS];
 
+        if (creature->IsPet())
+        {
+            Pet const* pet = static_cast<Pet const*>(creature);
+            if (pet->getPetType() == HUNTER_PET && pet->GetOwnerGUID() != target->GetGUID())
+                appendValue &= ~(UNIT_NPC_FLAG_SPELLCLICK | UNIT_NPC_FLAG_PLAYER_VEHICLE);
+        }
+
         if (sWorld->getIntConfig(CONFIG_INSTANT_TAXI) == 2 && appendValue & UNIT_NPC_FLAG_FLIGHTMASTER)
             appendValue |= UNIT_NPC_FLAG_GOSSIP; // flight masters need NPC gossip flag to show instant flight toggle option
 
@@ -16559,6 +16921,34 @@ void Unit::PatchValuesUpdate(ByteBuffer& valuesUpdateBuf, BuildValuesCachePosPoi
             appendValue &= ~UNIT_FLAG_NOT_SELECTABLE;
 
         valuesUpdateBuf.put(posPointers.UnitFieldFlagsPos, appendValue);
+    }
+
+    // UNIT_FIELD_LEVEL
+    if (creature && posPointers.UnitFieldLevelPos >= 0)
+        valuesUpdateBuf.put(posPointers.UnitFieldLevelPos, uint32(creature->getLevelForTarget(target)));
+
+    // UNIT_FIELD_HEALTH and UNIT_FIELD_MAXHEALTH
+    if (creature && (posPointers.UnitFieldHealthPos >= 0 || posPointers.UnitFieldMaxHealthPos >= 0))
+    {
+        if (posPointers.UnitFieldHealthPos >= 0)
+            valuesUpdateBuf.put(posPointers.UnitFieldHealthPos, GetHealthForTarget(target));
+
+        if (posPointers.UnitFieldMaxHealthPos >= 0)
+            valuesUpdateBuf.put(posPointers.UnitFieldMaxHealthPos, GetMaxHealthForTarget(target));
+    }
+
+    if (creature)
+    {
+        for (uint8 power = 0; power < MAX_POWERS; ++power)
+        {
+            uint16 powerIndex = UNIT_FIELD_POWER1 + power;
+            if (auto itr = posPointers.other.find(powerIndex); itr != posPointers.other.end())
+                valuesUpdateBuf.put(itr->second, GetPowerForTarget(target, Powers(power)));
+
+            uint16 maxPowerIndex = UNIT_FIELD_MAXPOWER1 + power;
+            if (auto itr = posPointers.other.find(maxPowerIndex); itr != posPointers.other.end())
+                valuesUpdateBuf.put(itr->second, GetMaxPowerForTarget(target, Powers(power)));
+        }
     }
 
     // UNIT_FIELD_DISPLAYID

@@ -23,12 +23,13 @@
 #include "CombatManager.h"
 #include "Containers.h"
 #include "CreatureScript.h"
+#include "Pet.h"
 #include "PetDefines.h"
+#include "PetScript.h"
 #include "ScriptedCreature.h"
 #include "SpellAuraEffects.h"
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
-#include "TemporarySummon.h"
 
 enum HunterSpells
 {

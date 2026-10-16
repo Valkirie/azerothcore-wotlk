@@ -20,9 +20,9 @@
 #include "AchievementMgr.h"
 #include "AreaDefines.h"
 #include "ArenaSpectator.h"
+#include "Battlegrounds/ArenaSeason/ArenaSeasonMgr.h"
 #include "ArenaTeam.h"
 #include "ArenaTeamMgr.h"
-#include "ArenaSeasonMgr.h"
 #include "Battlefield.h"
 #include "BattlefieldMgr.h"
 #include "BattlefieldWG.h"
@@ -5976,7 +5976,8 @@ void Player::CheckAreaExploreAndOutdoor()
             }
             else
             {
-                int32 diff = int32(playerLevel) - areaEntry->area_level;
+                uint8 areaLevel = sObjectMgr->GetExplorationLevel(areaId, GetZoneId(), playerLevel, areaEntry->area_level);
+                int32 diff = int32(playerLevel) - areaLevel;
                 uint32 XP = 0;
                 if (diff < -5)
                 {
@@ -5990,11 +5991,11 @@ void Player::CheckAreaExploreAndOutdoor()
                     else if (exploration_percent < 0)
                         exploration_percent = 0;
 
-                    XP = uint32(sObjectMgr->GetBaseXP(areaEntry->area_level) * exploration_percent / 100 * sWorld->getRate(RATE_XP_EXPLORE));
+                    XP = uint32(sObjectMgr->GetBaseXP(areaLevel) * exploration_percent / 100 * sWorld->getRate(RATE_XP_EXPLORE));
                 }
                 else
                 {
-                    XP = uint32(sObjectMgr->GetBaseXP(areaEntry->area_level) * sWorld->getRate(RATE_XP_EXPLORE));
+                    XP = uint32(sObjectMgr->GetBaseXP(areaLevel) * sWorld->getRate(RATE_XP_EXPLORE));
                 }
 
                 sScriptMgr->OnPlayerGiveXP(this, XP, nullptr, PlayerXPSource::XPSOURCE_EXPLORE);
@@ -10894,6 +10895,26 @@ inline bool Player::_StoreOrEquipNewItem(uint32 vendorslot, uint32 item, uint8 c
     return true;
 }
 
+uint32 Player::GetVendorItemBuyPrice(ItemTemplate const* itemTemplate) const
+{
+    if (itemTemplate->RequiredSkill != SKILL_RIDING)
+        return itemTemplate->BuyPrice > 0 ? uint32(itemTemplate->BuyPrice) : 0;
+
+    switch (itemTemplate->RequiredSkillRank)
+    {
+        case 75:
+            return sWorld->getIntConfig(CONFIG_APPRENTICE_MOUNT_COST);
+        case 150:
+            return sWorld->getIntConfig(CONFIG_JOURNEYMAN_MOUNT_COST);
+        case 225:
+            return sWorld->getIntConfig(CONFIG_EXPERT_MOUNT_COST);
+        case 300:
+            return sWorld->getIntConfig(CONFIG_ARTISAN_MOUNT_COST);
+        default:
+            return itemTemplate->BuyPrice > 0 ? uint32(itemTemplate->BuyPrice) : 0;
+    }
+}
+
 // Return true is the bought item has a max count to force refresh of window by caller
 bool Player::BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uint32 item, uint8 count, uint8 bag, uint8 slot)
 {
@@ -10939,14 +10960,6 @@ bool Player::BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uin
         return false;
     }
 
-    ConditionList conditions = sConditionMgr->GetConditionsForNpcVendorEvent(creature->GetEntry(), item);
-    if (!sConditionMgr->IsObjectMeetToConditions(this, creature, conditions))
-    {
-        //LOG_DEBUG("condition", "BuyItemFromVendor: conditions not met for creature entry {} item {}", creature->GetEntry(), item);
-        SendBuyError(BUY_ERR_CANT_FIND_ITEM, creature, item, 0);
-        return false;
-    }
-
     VendorItemData const* vItems = GetSession()->GetCurrentVendor() ? sObjectMgr->GetNpcVendorItemList(GetSession()->GetCurrentVendor()) : creature->GetVendorItems();
     if (!vItems || vItems->Empty())
     {
@@ -10962,7 +10975,23 @@ bool Player::BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uin
 
     VendorItem const* crItem = vItems->GetItem(vendorslot);
     // store diff item (cheating)
-    if (!crItem || crItem->item != item)
+    if (!crItem)
+    {
+        SendBuyError(BUY_ERR_CANT_FIND_ITEM, creature, item, 0);
+        return false;
+    }
+
+    ConditionList conditions = sConditionMgr->GetConditionsForNpcVendorEvent(creature->GetEntry(), crItem->item);
+    if (!sConditionMgr->IsObjectMeetToConditions(this, creature, conditions))
+    {
+        //LOG_DEBUG("condition", "BuyItemFromVendor: conditions not met for creature entry {} item {}", creature->GetEntry(), crItem->item);
+        SendBuyError(BUY_ERR_CANT_FIND_ITEM, creature, item, 0);
+        return false;
+    }
+
+    bool isNotScaledLootFromVendor = sObjectMgr->IsNotScaledLootFromVendor(crItem->item);
+    uint32 expectedItem = isNotScaledLootFromVendor ? crItem->item : LootStore::LoadScaledLoot(crItem->item, this);
+    if (expectedItem != item)
     {
         SendBuyError(BUY_ERR_CANT_FIND_ITEM, creature, item, 0);
         return false;
@@ -11027,15 +11056,16 @@ bool Player::BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uin
     }
 
     uint32 price = 0;
-    if (crItem->IsGoldRequired(pProto) && pProto->BuyPrice > 0) //Assume price cannot be negative (do not know why it is int32)
+    uint32 unitPrice = GetVendorItemBuyPrice(pProto);
+    if (crItem->IsGoldRequired(pProto) && unitPrice > 0)
     {
-        uint32 maxCount = MAX_MONEY_AMOUNT / pProto->BuyPrice;
+        uint32 maxCount = MAX_MONEY_AMOUNT / unitPrice;
         if ((uint32)count > maxCount)
         {
             LOG_ERROR("entities.player", "Player {} tried to buy {} item id {}, causing overflow", GetName(), (uint32)count, pProto->ItemId);
             count = (uint8)maxCount;
         }
-        price = pProto->BuyPrice * count; //it should not exceed MAX_MONEY_AMOUNT
+        price = unitPrice * count;
 
         // reputation discount
         price = uint32(std::floor(price * GetReputationPriceDiscount(creature)));
@@ -13905,12 +13935,13 @@ LootItem* Player::StoreLootItem(uint8 lootSlot, Loot* loot, InventoryResult& msg
         return nullptr;
     }
 
+    LootItem::ItemInfo const& itemInfo = item->GetItemInfoForPlayer(this);
     ItemPosCountVec dest;
-    msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item->itemid, item->count);
+    msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemInfo.itemId, item->count);
     if (msg == EQUIP_ERR_OK)
     {
         AllowedLooterSet looters = item->GetAllowedLooters();
-        Item* newitem = StoreNewItem(dest, item->itemid, true, item->randomPropertyId, looters);
+        Item* newitem = StoreNewItem(dest, itemInfo.itemId, true, itemInfo.randomPropertyId, looters);
 
         if (qitem)
         {
@@ -13955,7 +13986,7 @@ LootItem* Player::StoreLootItem(uint8 lootSlot, Loot* loot, InventoryResult& msg
     }
     else
     {
-        SendEquipError(msg, nullptr, nullptr, item->itemid);
+        SendEquipError(msg, nullptr, nullptr, itemInfo.itemId);
     }
 
     return item;
@@ -14600,7 +14631,10 @@ void Player::ResummonPetTemporaryUnSummonedIfAny()
 
     Pet* newPet = new Pet(this);
     if (!newPet->LoadPetFromDB(this, 0, m_temporaryUnsummonedPetNumber, true))
+    {
         delete newPet;
+        return;
+    }
 
     m_temporaryUnsummonedPetNumber = 0;
 }
@@ -16754,6 +16788,103 @@ std::string Player::GetDebugInfo() const
     std::stringstream sstr;
     sstr << Unit::GetDebugInfo();
     return sstr.str();
+}
+
+namespace
+{
+std::array<ServerConfigs, MAX_ITEM_QUALITY> const qualityToCoeff =
+{
+    RATE_WEIGHT_ITEM_POOR, RATE_WEIGHT_ITEM_NORMAL, RATE_WEIGHT_ITEM_UNCOMMON,
+    RATE_WEIGHT_ITEM_RARE, RATE_WEIGHT_ITEM_EPIC, RATE_WEIGHT_ITEM_LEGENDARY,
+    RATE_WEIGHT_ITEM_ARTIFACT, RATE_WEIGHT_ITEM_HEIRLOOM
+};
+}
+
+// Calculate effective item level from usable weapons and armor in equipment/inventory.
+uint32 Player::GetItemLevel() const
+{
+    float totalItemLevel = 0.0f;
+    uint8 itemCount = 0;
+    auto addItem = [&](Item const* item)
+    {
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        if (proto && (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR) && CanUseItem(proto) <= EQUIP_ERR_CANT_EQUIP_SKILL)
+        {
+            ++itemCount;
+            totalItemLevel += std::max(static_cast<float>(proto->ItemLevel) * sWorld->getRate(qualityToCoeff[proto->Quality]), 1.0f);
+        }
+    };
+
+    for (int slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+        addItem(GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    for (int slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        addItem(GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    for (int bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+        if (Item* bagItem = GetItemByPos(INVENTORY_SLOT_BAG_0, bag))
+            if (Bag* container = bagItem->ToBag())
+            for (uint32 slot = 0; slot < container->GetBagSize(); ++slot)
+                addItem(GetItemByPos(bag, slot));
+
+    totalItemLevel /= std::max(static_cast<float>(itemCount), static_cast<float>(sObjectMgr->GetPlayerExpectedItemCount(GetLevel())));
+    return static_cast<uint32>(std::max(totalItemLevel, 5.0f));
+}
+
+// An item is relevant to smart loot when it is level-appropriate and usable.
+bool Player::IsRelevant(Item const* item) const
+{
+    return item && item->GetTemplate() &&
+        static_cast<float>(item->GetTemplate()->RequiredLevel) / static_cast<float>(GetLevel()) >= 0.75f &&
+        CanUseItem(item->GetTemplate()) == EQUIP_ERR_OK;
+}
+
+// Count relevant items of a quality, optionally including the inventory and bags.
+float Player::countRelevant(uint32 quality, bool inventory) const
+{
+    float count = 0.0f;
+    auto countItem = [&](Item* item)
+    {
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        if (proto && (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR) && IsRelevant(item) && proto->Quality == quality)
+            count += 1.0f;
+    };
+
+    for (int slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+        countItem(GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    if (inventory)
+    {
+        for (int slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+            countItem(GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+        for (int bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+            if (Item* bagItem = GetItemByPos(INVENTORY_SLOT_BAG_0, bag))
+                if (Bag* container = bagItem->ToBag())
+                    for (uint32 slot = 0; slot < container->GetBagSize(); ++slot)
+                        countItem(GetItemByPos(bag, slot));
+    }
+    return count;
+}
+
+// Combine item-level and quality-quantity signals into the smart-loot coefficient.
+float Player::GetItemLevelCoeff(uint32 quality) const
+{
+    if (!sWorld->getBoolConfig(CONFIG_BOOL_SMART_LOOT) || GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
+        return 1.0f;
+
+    float itemLevelModifier = std::max(static_cast<float>(sObjectMgr->GetPlayerExpectedItemLevel(GetLevel())) / static_cast<float>(GetItemLevel()), 1.0f);
+    float quantityModifier = 1.0f;
+    uint32 level = std::min(static_cast<uint8>(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)), GetLevel());
+    switch (quality)
+    {
+        case ITEM_QUALITY_UNCOMMON:
+        case ITEM_QUALITY_RARE:
+        case ITEM_QUALITY_EPIC:
+            quantityModifier = 1.0f - countRelevant(quality, true);
+            break;
+        default:
+            break;
+    }
+    (void)level;
+    float maxAmount = static_cast<float>(sWorld->getIntConfig(CONFIG_INT32_SMART_LOOT_AMOUNT));
+    return std::min(std::max(itemLevelModifier, quantityModifier), maxAmount);
 }
 
 void Player::SendSystemMessage(std::string_view msg, bool escapeCharacters)

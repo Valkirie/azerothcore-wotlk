@@ -2125,6 +2125,95 @@ EnablePlayerSettings = 0
 MaxPlayerLevel = 80
 
 #
+#    Mount.Apprentice.Level
+#        Description: Level requirement for apprentice riding, first-tier class mounts, and the
+#                     apprentice riding information mail.
+#        Range:       1-MaxPlayerLevel
+#        Default:     20
+
+Mount.Apprentice.Level = 20
+
+#
+#    Mount.Apprentice.Cost
+#        Description: Cost of apprentice riding mounts in Copper.
+#        Default:     10000 - (1 Gold)
+
+Mount.Apprentice.Cost = 10000
+
+#
+#    Mount.Apprentice.Training.Cost
+#        Description: Cost of apprentice riding training in Copper.
+#        Default:     40000 - (4 Gold)
+
+Mount.Apprentice.Training.Cost = 40000
+
+#
+#    Mount.Journeyman.Level
+#        Description: Level requirement for journeyman riding.
+#        Range:       1-MaxPlayerLevel
+#        Default:     40
+
+Mount.Journeyman.Level = 40
+
+#
+#    Mount.Journeyman.Cost
+#        Description: Cost of journeyman riding mounts in Copper.
+#        Default:     100000 - (10 Gold)
+
+Mount.Journeyman.Cost = 100000
+
+#
+#    Mount.Journeyman.Training.Cost
+#        Description: Cost of journeyman riding training in Copper.
+#        Default:     500000 - (50 Gold)
+
+Mount.Journeyman.Training.Cost = 500000
+
+#
+#    Mount.Expert.Level
+#        Description: Level requirement for expert riding.
+#        Range:       1-MaxPlayerLevel
+#        Default:     60
+
+Mount.Expert.Level = 60
+
+#
+#    Mount.Expert.Cost
+#        Description: Cost of expert riding mounts in Copper.
+#        Default:     500000 - (50 Gold)
+
+Mount.Expert.Cost = 500000
+
+#
+#    Mount.Expert.Training.Cost
+#        Description: Cost of expert riding training in Copper.
+#        Default:     2500000 - (250 Gold)
+
+Mount.Expert.Training.Cost = 2500000
+
+#
+#    Mount.Artisan.Level
+#        Description: Level requirement for artisan riding.
+#        Range:       1-MaxPlayerLevel
+#        Default:     70
+
+Mount.Artisan.Level = 70
+
+#
+#    Mount.Artisan.Cost
+#        Description: Cost of artisan riding mounts in Copper.
+#        Default:     1000000 - (100 Gold)
+
+Mount.Artisan.Cost = 1000000
+
+#
+#    Mount.Artisan.Training.Cost
+#        Description: Cost of artisan riding training in Copper.
+#        Default:     50000000 - (5000 Gold)
+
+Mount.Artisan.Training.Cost = 50000000
+
+#
 #    MinDualSpecLevel
 #        Description: Level requirement for Dual Talent Specialization
 #        Default:     40
@@ -4796,6 +4885,70 @@ Daze.Enabled = 1
 #        Default:     0 - (Blizzlike)
 
 InfiniteAmmo.Enabled = 0
+
+#
+#    Rochenoire.Scaling.PvP.Enemy
+#    Rochenoire.Scaling.PvP.Friendly
+#        Description: Enable level scaling for hostile or friendly player-versus-player combat.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+
+Rochenoire.Scaling.PvP.Enemy    = 0
+Rochenoire.Scaling.PvP.Friendly = 0
+
+#
+#    Rochenoire.Scaling.PvE.Itemlevel
+#        Description: Adjust PvE creature scaling using the player's effective item level.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+
+Rochenoire.Scaling.PvE.Itemlevel = 0
+
+#
+#    Rate.Scaling.PvE.Itemlevel
+#        Description: Minimum item-level scaling ratio applied to PvE encounters.
+#                     Values below 1.0 allow under-geared players to reduce the effective level;
+#                     values above 1.0 are not recommended.
+#        Default:     1.0
+
+Rate.Scaling.PvE.Itemlevel = 1.0
+
+#
+#    Rochenoire.SmartLoot.Enabled
+#        Description: Enable smart-loot adjustments based on the player's item level and inventory.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+
+Rochenoire.SmartLoot.Enabled = 0
+
+#
+#    Rochenoire.SmartLoot.Amount
+#        Description: Maximum smart-loot coefficient applied to item selection.
+#        Default:     4
+
+Rochenoire.SmartLoot.Amount = 4
+
+#
+#    Rate.Weight.Item.Poor
+#    Rate.Weight.Item.Normal
+#    Rate.Weight.Item.Uncommon
+#    Rate.Weight.Item.Rare
+#    Rate.Weight.Item.Epic
+#    Rate.Weight.Item.Legendary
+#    Rate.Weight.Item.Artifact
+#    Rate.Weight.Item.Heirloom
+#        Description: Quality weighting multipliers used when calculating effective player item level.
+#                     Higher values make items of that quality contribute more to the calculation.
+#        Default:     1.0 for each quality
+
+Rate.Weight.Item.Poor      = 1.0
+Rate.Weight.Item.Normal    = 1.0
+Rate.Weight.Item.Uncommon  = 1.0
+Rate.Weight.Item.Rare      = 1.0
+Rate.Weight.Item.Epic      = 1.0
+Rate.Weight.Item.Legendary = 1.0
+Rate.Weight.Item.Artifact  = 1.0
+Rate.Weight.Item.Heirloom  = 1.0
 
 #
 ###################################################################################################

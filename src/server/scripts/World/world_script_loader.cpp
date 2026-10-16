@@ -31,6 +31,7 @@ void AddSC_chat_log(); // location: scripts\World\chat_log.cpp
 void AddSC_action_ip_logger(); // location: scripts\World\action_ip_logger.cpp
 void AddSC_player_scripts();
 void AddSC_npc_stave_of_ancients();
+void AddSC_rochenoire_mail();
 void AddSC_server_mail();
 void AddSC_transport_zeppelins();
 void AddSC_suns_reach_reclamation();
@@ -55,6 +56,7 @@ void AddWorldScripts()
     AddSC_action_ip_logger(); // location: scripts\World\action_ip_logger.cpp
     AddSC_player_scripts();
     AddSC_npc_stave_of_ancients();
+    AddSC_rochenoire_mail();
     AddSC_server_mail();
     AddSC_transport_zeppelins();
     AddSC_suns_reach_reclamation();

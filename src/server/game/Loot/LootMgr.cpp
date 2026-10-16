@@ -16,10 +16,10 @@
  */
 
 #include "LootMgr.h"
+#include "ItemEnchantmentMgr.h"
 #include "Containers.h"
 #include "DisableMgr.h"
 #include "Group.h"
-#include "ItemEnchantmentMgr.h"
 #include "Log.h"
 #include "ObjectMgr.h"
 #include "Player.h"
@@ -41,6 +41,7 @@ ServerConfigs const qualityToRate[] =
     RATE_DROP_ITEM_ARTIFACT,                                // ITEM_QUALITY_ARTIFACT
 };
 
+// Anchor check: loot template store declarations (no-op)
 LootStore LootTemplates_Creature("creature_loot_template",           "creature entry",                  true);
 LootStore LootTemplates_Disenchant("disenchant_loot_template",       "item disenchant id",              true);
 LootStore LootTemplates_Fishing("fishing_loot_template",             "area id",                         true);
@@ -48,6 +49,81 @@ LootStore LootTemplates_Gameobject("gameobject_loot_template",       "gameobject
 LootStore LootTemplates_Item("item_loot_template",                   "item entry",                      true);
 LootStore LootTemplates_Mail("mail_loot_template",                   "mail template id",                false);
 LootStore LootTemplates_Milling("milling_loot_template",             "item entry (herb)",               true);
+
+static std::unordered_map<uint32, uint32> SmartLootInfoNameLootTemplate;
+
+void LoadRochenoireSmartLootTable(char const* tableName)
+{
+    uint32 oldMSTime = getMSTime();
+    SmartLootInfoNameLootTemplate.clear();
+
+    QueryResult result = WorldDatabase.Query("SELECT `Reference`, `LootInfo` FROM `rochenoire_smart_loot_data` WHERE `table` = '{}'", tableName);
+    if (!result)
+    {
+        LOG_DEBUG("server.loading", ">> No smart-loot values configured for {}.", tableName);
+        return;
+    }
+
+    uint32 count = 0;
+    do
+    {
+        Field* fields = result->Fetch();
+        SmartLootInfoNameLootTemplate[fields[0].Get<uint32>()] = fields[1].Get<uint32>();
+        ++count;
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> Loaded {} smart-loot values for {} in {} ms", count, tableName, GetMSTimeDiffToNow(oldMSTime));
+}
+
+namespace
+{
+uint32 LoadScaledLootForLevel(uint32 itemId, Player* player, uint32 playerLevel)
+{
+    if (!player)
+        return itemId;
+
+    playerLevel = std::min(playerLevel, uint32(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
+    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+    if (!proto)
+        return itemId;
+
+    if (proto->Class == ITEM_CLASS_CONSUMABLE || proto->Class == ITEM_CLASS_CONTAINER || proto->Class == ITEM_CLASS_MISC)
+    {
+        uint32 scaledItemId = sObjectMgr->GetItemLootScale(itemId, uint8(playerLevel));
+        if (scaledItemId != itemId)
+            return scaledItemId;
+
+        return itemId;
+    }
+
+    if (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR)
+    {
+        uint32 scaledId = MIN_ENTRY_SCALE + itemId * MAX_REQUIREDLEVEL + playerLevel;
+        if (sObjectMgr->GetItemTemplate(scaledId))
+            return scaledId;
+    }
+
+    return itemId;
+}
+}
+
+uint32 LootStore::LoadScaledLoot(uint32 itemId, Player* player, uint32 forcedLevel)
+{
+    if (!player)
+        return itemId;
+
+    uint32 playerLevel = forcedLevel ? forcedLevel : player->getAreaZoneLevel();
+    if (ZoneFlex const* location = sObjectMgr->GetAreaZoneFlex(player->GetAreaId(), player->GetZoneId()))
+        playerLevel = std::clamp(playerLevel, uint32(location->LevelRangeMin), uint32(location->LevelRangeMax));
+
+    return LoadScaledLootForLevel(itemId, player, playerLevel);
+}
+
+uint32 LootStore::LoadScaledLootAtLevel(uint32 itemId, Player* player, uint32 level)
+{
+    return LoadScaledLootForLevel(itemId, player, level);
+}
+
 LootStore LootTemplates_Pickpocketing("pickpocketing_loot_template", "creature pickpocket lootid",      true);
 LootStore LootTemplates_Prospecting("prospecting_loot_template",     "item entry (ore)",                true);
 LootStore LootTemplates_Reference("reference_loot_template",         "reference id",                    false);
@@ -146,6 +222,7 @@ uint32 LootStore::LoadLootTable()
 
     // Clearing store (for reloading case)
     Clear();
+    LoadRochenoireSmartLootTable(GetName());
 
     //                                                  0     1            2               3         4         5             6
     QueryResult result = WorldDatabase.Query("SELECT Entry, Item, Reference, Chance, QuestRequired, LootMode, GroupId, MinCount, MaxCount FROM {}", GetName());
@@ -168,6 +245,14 @@ uint32 LootStore::LoadLootTable()
         uint8  groupid             = fields[6].Get<uint8>();
         int32  mincount            = fields[7].Get<uint8>();
         int32  maxcount            = fields[8].Get<uint8>();
+        int8 lootInfo              = -1;
+
+        if (reference)
+        {
+            auto itr = SmartLootInfoNameLootTemplate.find(uint32(std::abs(reference)));
+            if (itr != SmartLootInfoNameLootTemplate.end())
+                lootInfo = static_cast<int8>(itr->second);
+        }
 
         if (maxcount > std::numeric_limits<uint8>::max())
         {
@@ -181,7 +266,7 @@ uint32 LootStore::LoadLootTable()
             lootmode = 1;
         }
 
-        LootStoreItem* storeitem = new LootStoreItem(item, reference, chance, needsquest, lootmode, groupid, mincount, maxcount);
+        LootStoreItem* storeitem = new LootStoreItem(item, reference, chance, needsquest, lootmode, groupid, mincount, maxcount, lootInfo);
 
         if (!storeitem->IsValid(*this, entry))            // Validity checks
         {
@@ -318,13 +403,23 @@ bool LootStoreItem::Roll(bool rate, Player const* player, Loot& loot, LootStore 
     if (_chance >= 100.0f)
         return true;
 
+    float qualityModifier = 1.0f;
+    if (player && lootInfo >= 0 && lootInfo <= ITEM_QUALITY_ARTIFACT)
+    {
+        qualityModifier *= sWorld->getRate(qualityToRate[lootInfo]);
+        qualityModifier *= player->GetItemLevelCoeff(uint32(lootInfo));
+    }
+
     if (reference)                                   // reference case
-        return roll_chance_f(_chance * (rate ? sWorld->getRate(RATE_DROP_ITEM_REFERENCED) : 1.0f));
+        return roll_chance_f(_chance * qualityModifier * (rate ? sWorld->getRate(RATE_DROP_ITEM_REFERENCED) : 1.0f));
 
     ItemTemplate const* pProto = sObjectMgr->GetItemTemplate(itemid);
-    float qualityModifier = 1.0f;
     if (pProto && pProto->Quality < ITEM_QUALITY_HEIRLOOM && rate)
-        qualityModifier = sWorld->getRate(qualityToRate[pProto->Quality]);
+        qualityModifier *= sWorld->getRate(qualityToRate[pProto->Quality]);
+
+    bool const isEquipment = pProto && (pProto->Class == ITEM_CLASS_WEAPON || pProto->Class == ITEM_CLASS_ARMOR);
+    if (player && isEquipment)
+        qualityModifier *= player->GetItemLevelCoeff(pProto->Quality);
 
     return roll_chance_f(_chance * qualityModifier);
 }
@@ -403,7 +498,9 @@ LootItem::LootItem(LootStoreItem const& li)
     needs_quest = li.needs_quest;
 
     randomSuffix = GenerateEnchSuffixFactor(itemid);
-    randomPropertyId = Item::GenerateItemRandomPropertyId(itemid);
+    randomPropertyId = Item::GenerateItemRandomPropertyId(itemid, randomPropertyFamily, randomSuffixFamily);
+    has_random_suffix = randomSuffix != 0;
+    has_random_property = randomPropertyId != 0;
     count = 0;
     is_looted = false;
     is_blocked = false;
@@ -411,6 +508,62 @@ LootItem::LootItem(LootStoreItem const& li)
     is_counted = false;
     rollWinnerGUID = ObjectGuid::Empty;
     groupid = li.groupid;
+}
+
+void LootItem::ScaleForPlayer(uint32 playerLevel, Player* player)
+{
+    if (!player || loot_level == playerLevel)
+        return;
+
+    uint32 scaledItemId = LootStore::LoadScaledLoot(itemid, player, playerLevel);
+    if (scaledItemId == itemid)
+        return;
+
+    int32 scaledRandomProperty = has_random_property ? Item::GenerateItemRandomPropertyIdForFamily(scaledItemId, randomPropertyFamily, randomSuffixFamily) : 0;
+    if (has_random_property && !scaledRandomProperty)
+        return;
+
+    itemid = scaledItemId;
+    loot_level = playerLevel;
+    randomPropertyId = scaledRandomProperty;
+    randomSuffix = has_random_suffix ? GenerateEnchSuffixFactor(scaledItemId) : 0;
+}
+
+void LootItem::GetScaledValuesForPlayer(uint32 playerLevel, Player* player, uint32& scaledItemId, uint32& scaledRandomSuffix, int32& scaledRandomProperty) const
+{
+    scaledItemId = itemid;
+    scaledRandomSuffix = randomSuffix;
+    scaledRandomProperty = randomPropertyId;
+    if (!player || loot_level == playerLevel)
+        return;
+
+    scaledItemId = LootStore::LoadScaledLoot(itemid, player, playerLevel);
+    if (scaledItemId != itemid)
+    {
+        int32 candidateRandomProperty = has_random_property ? Item::GenerateItemRandomPropertyIdForFamily(scaledItemId, randomPropertyFamily, randomSuffixFamily) : 0;
+        if (has_random_property && !candidateRandomProperty)
+        {
+            scaledItemId = itemid;
+            return;
+        }
+
+        scaledRandomProperty = candidateRandomProperty;
+        scaledRandomSuffix = has_random_suffix ? GenerateEnchSuffixFactor(scaledItemId) : 0;
+    }
+}
+
+LootItem::ItemInfo const& LootItem::GetItemInfoForPlayer(Player* player) const
+{
+    ObjectGuid playerGuid = player ? player->GetGUID() : ObjectGuid::Empty;
+    auto itr = playerItemInfo.find(playerGuid);
+    if (itr != playerItemInfo.end())
+        return itr->second;
+
+    ItemInfo itemInfo = { itemid, randomSuffix, randomPropertyId };
+    if (player)
+        GetScaledValuesForPlayer(player->getAreaZoneLevel(), player, itemInfo.itemId, itemInfo.randomSuffix, itemInfo.randomPropertyId);
+
+    return playerItemInfo.emplace(playerGuid, itemInfo).first->second;
 }
 
 // Basic checks for player/item compatibility - if false no chance to see the item in the loot
@@ -971,6 +1124,16 @@ ByteBuffer& operator<<(ByteBuffer& b, LootItem const& li)
     return b;
 }
 
+static void WriteLootItemForPlayer(ByteBuffer& buffer, LootItem const& lootItem, Player* player)
+{
+    LootItem::ItemInfo const& itemInfo = lootItem.GetItemInfoForPlayer(player);
+    buffer << uint32(itemInfo.itemId);
+    buffer << uint32(lootItem.count);
+    buffer << uint32(sObjectMgr->GetItemTemplate(itemInfo.itemId)->DisplayInfoID);
+    buffer << uint32(itemInfo.randomSuffix);
+    buffer << uint32(itemInfo.randomPropertyId);
+}
+
 ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
 {
     if (lv.permission == NONE_PERMISSION)
@@ -1048,7 +1211,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                             // item shall not be displayed.
                             continue;
 
-                        b << uint8(i) << l.items[i];
+                        b << uint8(i);
+                        WriteLootItemForPlayer(b, l.items[i], lv.viewer);
                         b << uint8(slot_type);
                         ++itemsShown;
                     }
@@ -1065,7 +1229,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                             // item shall not be displayed.
                             continue;
 
-                        b << uint8(i) << l.items[i];
+                        b << uint8(i);
+                        WriteLootItemForPlayer(b, l.items[i], lv.viewer);
                         b << uint8(LOOT_SLOT_TYPE_ALLOW_LOOT);
                         ++itemsShown;
                     }
@@ -1080,7 +1245,8 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                 {
                     if (!l.items[i].is_looted && !l.items[i].freeforall && l.items[i].conditions.empty() && l.items[i].AllowedForPlayer(lv.viewer, l.sourceWorldObjectGUID))
                     {
-                        b << uint8(i) << l.items[i];
+                        b << uint8(i);
+                        WriteLootItemForPlayer(b, l.items[i], lv.viewer);
                         b << uint8(slot_type);
                         ++itemsShown;
                     }
@@ -1121,13 +1287,13 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                     }
 
                     b << uint8(l.items.size() + (qi - q_list->begin()));
-                    b << item;
+                    WriteLootItemForPlayer(b, item, lv.viewer);
                     b << uint8(lv.permission == MASTER_PERMISSION ? LOOT_SLOT_TYPE_MASTER : LOOT_SLOT_TYPE_LOCKED);
                 }
                 else
                 {
                     b << uint8(l.items.size() + (qi - q_list->begin()));
-                    b << item;
+                    WriteLootItemForPlayer(b, item, lv.viewer);
 
                     if (item.follow_loot_rules)
                     {
@@ -1173,7 +1339,7 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
             if (!fi->is_looted && !item.is_looted)
             {
                 b << uint8(fi->index);
-                b << item;
+                WriteLootItemForPlayer(b, item, lv.viewer);
                 // Xinef: Here are FFA items, so dont use owner permision
                 b << uint8(LOOT_SLOT_TYPE_ALLOW_LOOT /*slotType*/);
                 ++itemsShown;
@@ -1192,7 +1358,7 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
             if (!ci->is_looted && !item.is_looted)
             {
                 b << uint8(ci->index);
-                b << item;
+                WriteLootItemForPlayer(b, item, lv.viewer);
                 if (item.follow_loot_rules)
                 {
                     switch (lv.permission)

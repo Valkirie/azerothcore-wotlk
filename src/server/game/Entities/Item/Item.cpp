@@ -622,6 +622,15 @@ uint32 Item::GetSpell()
 
 int32 Item::GenerateItemRandomPropertyId(uint32 item_id)
 {
+    uint32 propertyFamily = 0;
+    uint32 suffixFamily = 0;
+    return GenerateItemRandomPropertyId(item_id, propertyFamily, suffixFamily);
+}
+
+int32 Item::GenerateItemRandomPropertyId(uint32 item_id, uint32& propertyFamily, uint32& suffixFamily)
+{
+    propertyFamily = 0;
+    suffixFamily = 0;
     ItemTemplate const* itemProto = sObjectMgr->GetItemTemplate(item_id);
 
     if (!itemProto)
@@ -641,7 +650,7 @@ int32 Item::GenerateItemRandomPropertyId(uint32 item_id)
     // RandomProperty case
     if (itemProto->RandomProperty)
     {
-        uint32 randomPropId = GetItemEnchantMod(itemProto->RandomProperty);
+        uint32 randomPropId = GetItemEnchantMod(itemProto->RandomProperty, propertyFamily, suffixFamily);
         ItemRandomPropertiesEntry const* random_id = sItemRandomPropertiesStore.LookupEntry(randomPropId);
         if (!random_id)
         {
@@ -654,7 +663,7 @@ int32 Item::GenerateItemRandomPropertyId(uint32 item_id)
     // RandomSuffix case
     else
     {
-        uint32 randomPropId = GetItemEnchantMod(itemProto->RandomSuffix);
+        uint32 randomPropId = GetItemEnchantMod(itemProto->RandomSuffix, propertyFamily, suffixFamily);
         ItemRandomSuffixEntry const* random_id = sItemRandomSuffixStore.LookupEntry(randomPropId);
         if (!random_id)
         {
@@ -664,6 +673,41 @@ int32 Item::GenerateItemRandomPropertyId(uint32 item_id)
 
         return -int32(random_id->ID);
     }
+}
+
+int32 Item::GenerateItemRandomPropertyIdForFamily(uint32 item_id, uint32 propertyFamily, uint32 suffixFamily)
+{
+    ItemTemplate const* itemProto = sObjectMgr->GetItemTemplate(item_id);
+    if (!itemProto)
+        return 0;
+
+    if (itemProto->RandomProperty)
+    {
+        uint32 randomPropId = GetItemEnchantModForFamily(itemProto->RandomProperty, propertyFamily, false);
+        ItemRandomPropertiesEntry const* randomId = sItemRandomPropertiesStore.LookupEntry(randomPropId);
+        if (!randomId)
+        {
+            LOG_ERROR("sql.sql", "Enchantment id #{} used but it doesn't have records in 'ItemRandomProperties.dbc'", randomPropId);
+            return 0;
+        }
+
+        return randomId->ID;
+    }
+
+    if (itemProto->RandomSuffix)
+    {
+        uint32 randomPropId = GetItemEnchantModForFamily(itemProto->RandomSuffix, suffixFamily, true);
+        ItemRandomSuffixEntry const* randomId = sItemRandomSuffixStore.LookupEntry(randomPropId);
+        if (!randomId)
+        {
+            LOG_ERROR("sql.sql", "Enchantment id #{} used but it doesn't have records in sItemRandomSuffixStore.", randomPropId);
+            return 0;
+        }
+
+        return -int32(randomId->ID);
+    }
+
+    return 0;
 }
 
 void Item::SetItemRandomProperties(int32 randomPropId)

@@ -20,6 +20,7 @@
 #include "CellImpl.h"
 #include "Channel.h"
 #include "ChannelMgr.h"
+#include "Chat.h"
 #include "Formulas.h"
 #include "GameTime.h"
 #include "GridNotifiers.h"
@@ -27,6 +28,7 @@
 #include "Guild.h"
 #include "InstanceScript.h"
 #include "Language.h"
+#include "Map.h"
 #include "OutdoorPvPMgr.h"
 #include "Pet.h"
 #include "Player.h"
@@ -1274,6 +1276,118 @@ void Player::UpdateArea(uint32 newArea)
         SetRestFlag(REST_FLAG_IN_FACTION_AREA);
     else
         RemoveRestFlag(REST_FLAG_IN_FACTION_AREA);
+
+    std::string addonMessage = "RZScale";
+    addonMessage.push_back('\t');
+    if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(newArea, m_zoneUpdateId); zoneFlex && !zoneFlex->IsLowLevel())
+    {
+        std::string areaName = zoneFlex->areaName;
+        if (area)
+            if (char const* localizedName = area->area_name[GetSession()->GetSessionDbcLocale()])
+                if (*localizedName)
+                    areaName = localizedName;
+
+        addonMessage += "v1:" + std::to_string(m_zoneUpdateId) + ":" + std::to_string(newArea) + ":" +
+            std::to_string(zoneFlex->areaId) + ":" + std::to_string(zoneFlex->LevelRangeMin) + ":" +
+            std::to_string(zoneFlex->LevelRangeMax) + ":" + std::to_string(zoneFlex->areaFlags) + ":" +
+            std::to_string(GetLevel()) + ":" + (zoneFlex->areaId == newArea ? "area" : "zone") + ":" + areaName;
+    }
+    else
+        addonMessage += "v1:clear";
+
+    WorldPacket addonPacket(SMSG_MESSAGECHAT, 1 + 4 + 8 + 4 + 8 + 4 + addonMessage.size() + 2);
+    addonPacket << uint8(CHAT_MSG_WHISPER);
+    addonPacket << uint32(LANG_ADDON);
+    addonPacket << uint64(0);
+    addonPacket << uint32(0);
+    addonPacket << uint64(0);
+    addonPacket << uint32(addonMessage.size() + 1);
+    addonPacket << addonMessage;
+    addonPacket << uint8(0);
+    SendDirectMessage(&addonPacket);
+    SendInstanceScalingUpdate();
+}
+
+void Player::SendZoneScalingCatalog() const
+{
+    constexpr std::size_t MaxAddonMessageLength = 255;
+    std::string const prefix = "RZScale\t";
+
+    auto sendAddonMessage = [this, &prefix](std::string const& message)
+    {
+        std::string addonMessage = prefix + message;
+        WorldPacket addonPacket(SMSG_MESSAGECHAT, 1 + 4 + 8 + 4 + 8 + 4 + addonMessage.size() + 2);
+        addonPacket << uint8(CHAT_MSG_WHISPER);
+        addonPacket << uint32(LANG_ADDON);
+        addonPacket << uint64(0);
+        addonPacket << uint32(0);
+        addonPacket << uint64(0);
+        addonPacket << uint32(addonMessage.size() + 1);
+        addonPacket << addonMessage;
+        addonPacket << uint8(0);
+        SendDirectMessage(&addonPacket);
+    };
+
+    sendAddonMessage("v2:catalog:start");
+
+    std::string const dataPrefix = "v2:catalog:data:";
+    std::string data = dataPrefix;
+    for (auto const& [areaId, zoneFlex] : sObjectMgr->GetZoneFlexMap())
+    {
+        AreaTableEntry const* area = sAreaTableStore.LookupEntry(areaId);
+        if (!area || area->zone || zoneFlex.IsScalingDisabled())
+            continue;
+
+        if (area->mapid != 0 && area->mapid != 1 && area->mapid != 530 && area->mapid != 571)
+            continue;
+
+        std::string areaName = zoneFlex.areaName;
+        if (char const* localizedName = area->area_name[GetSession()->GetSessionDbcLocale()])
+            if (*localizedName)
+                areaName = localizedName;
+
+        std::string record = std::to_string(zoneFlex.LevelRangeMin) + "," +
+            std::to_string(zoneFlex.LevelRangeMax) + "," + areaName;
+        std::size_t const separatorLength = data.size() == dataPrefix.size() ? 0 : 1;
+        if (prefix.size() + data.size() + separatorLength + record.size() > MaxAddonMessageLength)
+        {
+            if (data.size() > dataPrefix.size())
+                sendAddonMessage(data);
+            data = dataPrefix;
+        }
+
+        if (prefix.size() + data.size() + record.size() > MaxAddonMessageLength)
+            continue;
+
+        if (data.size() > dataPrefix.size())
+            data.push_back('|');
+        data += record;
+    }
+
+    if (data.size() > dataPrefix.size())
+        sendAddonMessage(data);
+    sendAddonMessage("v2:catalog:done");
+}
+
+void Player::SendInstanceScalingUpdate() const
+{
+    std::string addonMessage = "RZScale\t";
+    InstanceMap const* instanceMap = GetMap() ? GetMap()->ToInstanceMap() : nullptr;
+    if (instanceMap && instanceMap->HasInstanceScaling())
+        addonMessage += "v2:instance:" + std::to_string(instanceMap->GetInstanceScalingDifficultyPercentage());
+    else
+        addonMessage += "v2:instance:clear";
+
+    WorldPacket addonPacket(SMSG_MESSAGECHAT, 1 + 4 + 8 + 4 + 8 + 4 + addonMessage.size() + 2);
+    addonPacket << uint8(CHAT_MSG_WHISPER);
+    addonPacket << uint32(LANG_ADDON);
+    addonPacket << uint64(0);
+    addonPacket << uint32(0);
+    addonPacket << uint64(0);
+    addonPacket << uint32(addonMessage.size() + 1);
+    addonPacket << addonMessage;
+    addonPacket << uint8(0);
+    SendDirectMessage(&addonPacket);
 }
 
 void Player::UpdateZone(uint32 newZone, uint32 newArea, bool force)
@@ -1297,6 +1411,9 @@ void Player::UpdateZone(uint32 newZone, uint32 newArea, bool force)
                                       // just area change, works strange...
         if (Guild* guild = GetGuild())
             guild->UpdateMemberData(this, GUILD_MEMBER_DATA_ZONEID, newZone);
+
+        if (ZoneFlex const* zoneFlex = sObjectMgr->GetAreaZoneFlex(newArea, newZone); zoneFlex && !zoneFlex->IsLowLevel())
+            ChatHandler(GetSession()).PSendSysMessage(LANG_ZONE_LEVEL_SCALING_RANGE, zoneFlex->LevelRangeMin, zoneFlex->LevelRangeMax);
     }
 
     GetMap()->UpdatePlayerZoneStats(m_zoneUpdateId, newZone);

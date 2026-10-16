@@ -34,6 +34,7 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 class Creature;
@@ -89,11 +90,19 @@ struct CompareThreatLessThan
 class AC_GAME_API ThreatManager
 {
 public:
+    struct Snapshot
+    {
+        std::vector<std::pair<ObjectGuid, float>> ThreatenedByOwner;
+        std::vector<std::pair<ObjectGuid, float>> ThreateningOwner;
+    };
+
     class Heap;
     class ThreatListIterator;
     static const uint32 THREAT_UPDATE_INTERVAL = 1000u;
 
     static bool CanHaveThreatList(Unit const* who);
+    Snapshot CreateSnapshot() const;
+    void RestoreSnapshot(Snapshot const& snapshot);
 
     ThreatManager(Unit* owner);
     ~ThreatManager();
@@ -134,6 +143,8 @@ public:
 
     // does any unit have a threat list entry with victim == this.owner?
     bool IsThreateningAnyone(bool includeOffline = false) const;
+    // returns the available unit with the highest threat toward this.owner
+    Unit* GetHighestThreateningUnit() const;
     // is there a threat list entry on who's threat list for this.owner?
     bool IsThreateningTo(ObjectGuid const& who, bool includeOffline = false) const;
     // is there a threat list entry on who's threat list for this.owner?
@@ -144,7 +155,7 @@ public:
     void EvaluateSuppressed(bool canExpire = false);
 
     ///== AFFECT MY THREAT LIST ==
-    void AddThreat(Unit* target, float amount, SpellInfo const* spell = nullptr, bool ignoreModifiers = false, bool ignoreRedirects = false);
+    void AddThreat(Unit* target, float amount, SpellInfo const* spell = nullptr, bool ignoreModifiers = false, bool ignoreRedirects = false, bool isScaled = true, SpellSchoolMask schoolMask = SPELL_SCHOOL_MASK_NORMAL);
     void ScaleThreat(Unit* target, float factor);
     // Modify target's threat by +percent%
     void ModifyThreatByPercent(Unit* target, int32 percent) { if (percent) ScaleThreat(target, 0.01f * float(100 + percent)); }
@@ -198,7 +209,7 @@ private:
 
     static const CompareThreatLessThan CompareThreat;
     static bool CompareReferencesLT(ThreatReference const* a, ThreatReference const* b, float aWeight);
-    static float CalculateModifiedThreat(float threat, Unit const* victim, SpellInfo const* spell);
+    static float CalculateModifiedThreat(float threat, Unit const* victim, SpellInfo const* spell, SpellSchoolMask schoolMask);
 
     void SendClearAllThreatToClients() const;
     void SendRemoveToClients(Unit const* victim) const;

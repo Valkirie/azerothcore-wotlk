@@ -288,6 +288,13 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket& recvData)
         return;
     }
 
+    if (type == CHAT_MSG_WHISPER && lang == LANG_ADDON && msg == "RZScale\tv2:catalog")
+    {
+        sender->SendZoneScalingCatalog();
+        sender->SendInstanceScalingUpdate();
+        return;
+    }
+
     // pussywizard:
     if (msg.length() > 255 || (lang != LANG_ADDON && msg.find("|0") != std::string::npos))
         return;

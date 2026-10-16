@@ -84,14 +84,8 @@ void WorldSession::SendTimeQueryResponse()
     SendPacket(timeQueryResponse.Write());
 }
 
-/// Only _static_ data is sent in this packet !!!
-void WorldSession::HandleCreatureQueryOpcode(WorldPacket& recvData)
+void WorldSession::SendCreatureQueryResponse(uint32 entry, std::string_view iconNameOverride, std::string_view nameOverride)
 {
-    uint32 entry;
-    recvData >> entry;
-    ObjectGuid guid;
-    recvData >> guid;
-
     CreatureTemplate const* ci = sObjectMgr->GetCreatureTemplate(entry);
     if (ci)
     {
@@ -108,13 +102,16 @@ void WorldSession::HandleCreatureQueryOpcode(WorldPacket& recvData)
                 ObjectMgr::GetLocaleString(cl->Title, loc_idx, Title);
             }
         }
+        if (!nameOverride.empty())
+            Name = nameOverride;
+
         // guess size
         WorldPacket data(SMSG_CREATURE_QUERY_RESPONSE, 100);
         data << uint32(entry);                                       // creature entry
         data << Name;
         data << uint8(0) << uint8(0) << uint8(0);                    // name2, name3, name4, always empty
         data << Title;
-        data << ci->IconName;                                        // "Directions" for guard, string for Icons 2.3.0
+        data << (iconNameOverride.empty() ? ci->IconName : std::string(iconNameOverride)); // "Directions" for guard, string for Icons 2.3.0
         data << uint32(ci->type_flags);                              // flags
         data << uint32(ci->type);                                    // CreatureType.dbc
         data << uint32(ci->family);                                  // CreatureFamily.dbc
@@ -154,12 +151,24 @@ void WorldSession::HandleCreatureQueryOpcode(WorldPacket& recvData)
     }
     else
     {
-        LOG_DEBUG("network", "WORLD: CMSG_CREATURE_QUERY - NO CREATURE INFO! ({})", guid.ToString());
         WorldPacket data(SMSG_CREATURE_QUERY_RESPONSE, 4);
         data << uint32(entry | 0x80000000);
         SendPacket(&data);
-        LOG_DEBUG("network", "WORLD: Sent SMSG_CREATURE_QUERY_RESPONSE");
     }
+}
+
+/// Only _static_ data is sent in this packet !!!
+void WorldSession::HandleCreatureQueryOpcode(WorldPacket& recvData)
+{
+    uint32 entry;
+    recvData >> entry;
+    ObjectGuid guid;
+    recvData >> guid;
+
+    if (!sObjectMgr->GetCreatureTemplate(entry))
+        LOG_DEBUG("network", "WORLD: CMSG_CREATURE_QUERY - NO CREATURE INFO! ({})", guid.ToString());
+
+    SendCreatureQueryResponse(entry);
 }
 
 /// Only _static_ data is sent in this packet !!!

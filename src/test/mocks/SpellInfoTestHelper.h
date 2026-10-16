@@ -49,6 +49,13 @@ public:
         return *this;
     }
 
+    TestSpellEntryHelper& WithEffectValueMultiplier(uint8 effIndex, float multiplier)
+    {
+        if (effIndex < MAX_SPELL_EFFECTS)
+            _entry.EffectValueMultiplier[effIndex] = multiplier;
+        return *this;
+    }
+
     TestSpellEntryHelper& WithSpellFamilyName(uint32 familyName)
     {
         _entry.SpellFamilyName = familyName;
@@ -274,6 +281,12 @@ public:
     SpellInfoBuilder& WithEffectDieSides(uint8 effIndex, int32 dieSides)
     {
         _entryHelper.WithEffectDieSides(effIndex, dieSides);
+        return *this;
+    }
+
+    SpellInfoBuilder& WithEffectValueMultiplier(uint8 effIndex, float multiplier)
+    {
+        _entryHelper.WithEffectValueMultiplier(effIndex, multiplier);
         return *this;
     }
 

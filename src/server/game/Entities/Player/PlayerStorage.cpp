@@ -277,12 +277,13 @@ uint8 Player::FindEquipSlot(ItemTemplate const* proto, uint32 slot, bool swap) c
 InventoryResult Player::CanUnequipItems(uint32 item, uint32 count) const
 {
     uint32 tempcount = 0;
+    uint32 parentEntry = sObjectMgr->GetItemParentEntry(item);
 
     InventoryResult res = EQUIP_ERR_OK;
 
     for (uint8 i = EQUIPMENT_SLOT_START; i < INVENTORY_SLOT_BAG_END; ++i)
         if (Item* pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i))
-            if (pItem->GetEntry() == item)
+            if (sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry)
             {
                 InventoryResult ires = CanUnequipItem(INVENTORY_SLOT_BAG_0 << 8 | i, false);
                 if (ires == EQUIP_ERR_OK)
@@ -297,7 +298,7 @@ InventoryResult Player::CanUnequipItems(uint32 item, uint32 count) const
 
     for (uint8 i = INVENTORY_SLOT_ITEM_START; i < INVENTORY_SLOT_ITEM_END; ++i)
         if (Item* pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i))
-            if (pItem->GetEntry() == item)
+            if (sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry)
             {
                 tempcount += pItem->GetCount();
                 if (tempcount >= count)
@@ -306,7 +307,7 @@ InventoryResult Player::CanUnequipItems(uint32 item, uint32 count) const
 
     for (uint8 i = KEYRING_SLOT_START; i < CURRENCYTOKEN_SLOT_END; ++i)
         if (Item* pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i))
-            if (pItem->GetEntry() == item)
+            if (sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry)
             {
                 tempcount += pItem->GetCount();
                 if (tempcount >= count)
@@ -317,7 +318,7 @@ InventoryResult Player::CanUnequipItems(uint32 item, uint32 count) const
         if (Bag* pBag = GetBagByPos(i))
             for (uint32 j = 0; j < pBag->GetBagSize(); ++j)
                 if (Item* pItem = GetItemByPos(i, j))
-                    if (pItem->GetEntry() == item)
+                    if (sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry)
                     {
                         tempcount += pItem->GetCount();
                         if (tempcount >= count)
@@ -331,14 +332,15 @@ InventoryResult Player::CanUnequipItems(uint32 item, uint32 count) const
 uint32 Player::GetItemCount(uint32 item, bool inBankAlso, Item* skipItem) const
 {
     uint32 count = 0;
+    uint32 parentEntry = sObjectMgr->GetItemParentEntry(item);
     for (uint8 i = EQUIPMENT_SLOT_START; i < INVENTORY_SLOT_ITEM_END; i++)
         if (Item* pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i))
-            if (pItem != skipItem &&  pItem->GetEntry() == item)
+            if (pItem != skipItem && sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry)
                 count += pItem->GetCount();
 
     for (uint8 i = KEYRING_SLOT_START; i < CURRENCYTOKEN_SLOT_END; ++i)
         if (Item* pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i))
-            if (pItem != skipItem && pItem->GetEntry() == item)
+            if (pItem != skipItem && sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry)
                 count += pItem->GetCount();
 
     for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
@@ -356,7 +358,7 @@ uint32 Player::GetItemCount(uint32 item, bool inBankAlso, Item* skipItem) const
         // checking every item from 39 to 74 (including bank bags)
         for (uint8 i = BANK_SLOT_ITEM_START; i < BANK_SLOT_BAG_END; ++i)
             if (Item* pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i))
-                if (pItem != skipItem && pItem->GetEntry() == item)
+            if (pItem != skipItem && sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry)
                     count += pItem->GetCount();
 
         for (uint8 i = BANK_SLOT_BAG_START; i < BANK_SLOT_BAG_END; ++i)
@@ -659,10 +661,11 @@ bool Player::IsValidPos(uint8 bag, uint8 slot, bool explicit_pos)
 bool Player::HasItemCount(uint32 item, uint32 count, bool inBankAlso) const
 {
     uint32 tempcount = 0;
+    uint32 parentEntry = sObjectMgr->GetItemParentEntry(item);
     for (uint8 i = EQUIPMENT_SLOT_START; i < INVENTORY_SLOT_ITEM_END; i++)
     {
         Item* pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i);
-        if (pItem && pItem->GetEntry() == item && !pItem->IsInTrade())
+        if (pItem && sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry && !pItem->IsInTrade())
         {
             tempcount += pItem->GetCount();
             if (tempcount >= count)
@@ -672,7 +675,7 @@ bool Player::HasItemCount(uint32 item, uint32 count, bool inBankAlso) const
     for (uint8 i = KEYRING_SLOT_START; i < CURRENCYTOKEN_SLOT_END; ++i)
     {
         Item* pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i);
-        if (pItem && pItem->GetEntry() == item && !pItem->IsInTrade())
+        if (pItem && sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry && !pItem->IsInTrade())
         {
             tempcount += pItem->GetCount();
             if (tempcount >= count)
@@ -686,7 +689,7 @@ bool Player::HasItemCount(uint32 item, uint32 count, bool inBankAlso) const
             for (uint32 j = 0; j < pBag->GetBagSize(); j++)
             {
                 Item* pItem = GetItemByPos(i, j);
-                if (pItem && pItem->GetEntry() == item && !pItem->IsInTrade())
+                if (pItem && sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry && !pItem->IsInTrade())
                 {
                     tempcount += pItem->GetCount();
                     if (tempcount >= count)
@@ -701,7 +704,7 @@ bool Player::HasItemCount(uint32 item, uint32 count, bool inBankAlso) const
         for (uint8 i = BANK_SLOT_ITEM_START; i < BANK_SLOT_ITEM_END; i++)
         {
             Item* pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i);
-            if (pItem && pItem->GetEntry() == item && !pItem->IsInTrade())
+            if (pItem && sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry && !pItem->IsInTrade())
             {
                 tempcount += pItem->GetCount();
                 if (tempcount >= count)
@@ -715,7 +718,7 @@ bool Player::HasItemCount(uint32 item, uint32 count, bool inBankAlso) const
                 for (uint32 j = 0; j < pBag->GetBagSize(); j++)
                 {
                     Item* pItem = GetItemByPos(i, j);
-                    if (pItem && pItem->GetEntry() == item && !pItem->IsInTrade())
+                    if (pItem && sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry && !pItem->IsInTrade())
                     {
                         tempcount += pItem->GetCount();
                         if (tempcount >= count)
@@ -2422,7 +2425,9 @@ InventoryResult Player::CanUseItem(ItemTemplate const* proto) const
 
     if (GetLevel() < proto->RequiredLevel)
     {
-        return EQUIP_ERR_CANT_EQUIP_LEVEL_I;
+        Quest const* startQuest = proto->StartQuest ? sObjectMgr->GetQuestTemplate(proto->StartQuest) : nullptr;
+        if (!startQuest || !sObjectMgr->GetQuestZoneFlex(startQuest->GetQuestId(), startQuest->GetZoneOrSort()) || !SatisfyQuestLevel(startQuest, false))
+            return EQUIP_ERR_CANT_EQUIP_LEVEL_I;
     }
 
     // If World Event is not active, prevent using event dependant items
@@ -2969,7 +2974,7 @@ void Player::SetVisibleItemSlot(uint8 slot, Item* pItem)
 {
     if (pItem)
     {
-        SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + (slot * 2), pItem->GetEntry());
+        SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + (slot * 2), sObjectMgr->GetItemParentEntry(pItem->GetEntry()));
         SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 0, pItem->GetEnchantmentId(PERM_ENCHANTMENT_SLOT));
         SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 1, pItem->GetEnchantmentId(TEMP_ENCHANTMENT_SLOT));
     }
@@ -3225,6 +3230,7 @@ void Player::DestroyItem(uint8 bag, uint8 slot, bool update)
 void Player::DestroyItemCount(uint32 itemEntry, uint32 count, bool update, bool unequip_check)
 {
     LOG_DEBUG("entities.player.items", "STORAGE: DestroyItemCount item = {}, count = {}", itemEntry, count);
+    uint32 parentEntry = sObjectMgr->GetItemParentEntry(itemEntry);
     uint32 remcount = 0;
 
     // in inventory
@@ -3232,7 +3238,7 @@ void Player::DestroyItemCount(uint32 itemEntry, uint32 count, bool update, bool 
     {
         if (Item* item = GetItemByPos(INVENTORY_SLOT_BAG_0, i))
         {
-            if (item->GetEntry() == itemEntry && !item->IsInTrade())
+            if (sObjectMgr->GetItemParentEntry(item->GetEntry()) == parentEntry && !item->IsInTrade())
             {
                 if (item->GetCount() + remcount <= count)
                 {
@@ -3260,7 +3266,7 @@ void Player::DestroyItemCount(uint32 itemEntry, uint32 count, bool update, bool 
     {
         if (Item* item = GetItemByPos(INVENTORY_SLOT_BAG_0, i))
         {
-            if (item->GetEntry() == itemEntry && !item->IsInTrade())
+            if (sObjectMgr->GetItemParentEntry(item->GetEntry()) == parentEntry && !item->IsInTrade())
             {
                 if (item->GetCount() + remcount <= count)
                 {
@@ -3293,7 +3299,7 @@ void Player::DestroyItemCount(uint32 itemEntry, uint32 count, bool update, bool 
             {
                 if (Item* item = bag->GetItemByPos(j))
                 {
-                    if (item->GetEntry() == itemEntry && !item->IsInTrade())
+                    if (sObjectMgr->GetItemParentEntry(item->GetEntry()) == parentEntry && !item->IsInTrade())
                     {
                         // all items in bags can be unequipped
                         if (item->GetCount() + remcount <= count)
@@ -3324,7 +3330,7 @@ void Player::DestroyItemCount(uint32 itemEntry, uint32 count, bool update, bool 
     {
         if (Item* item = GetItemByPos(INVENTORY_SLOT_BAG_0, i))
         {
-            if (item && item->GetEntry() == itemEntry && !item->IsInTrade())
+            if (item && sObjectMgr->GetItemParentEntry(item->GetEntry()) == parentEntry && !item->IsInTrade())
             {
                 if (item->GetCount() + remcount <= count)
                 {
@@ -3355,7 +3361,7 @@ void Player::DestroyItemCount(uint32 itemEntry, uint32 count, bool update, bool 
     {
         if (Item* item = GetItemByPos(INVENTORY_SLOT_BAG_0, i))
         {
-            if (item->GetEntry() == itemEntry && !item->IsInTrade())
+            if (sObjectMgr->GetItemParentEntry(item->GetEntry()) == parentEntry && !item->IsInTrade())
             {
                 if (item->GetCount() + remcount <= count)
                 {
@@ -3386,7 +3392,7 @@ void Player::DestroyItemCount(uint32 itemEntry, uint32 count, bool update, bool 
             {
                 if (Item* item = bag->GetItemByPos(j))
                 {
-                    if (item->GetEntry() == itemEntry && !item->IsInTrade())
+                    if (sObjectMgr->GetItemParentEntry(item->GetEntry()) == parentEntry && !item->IsInTrade())
                     {
                         // all items in bags can be unequipped
                         if (item->GetCount() + remcount <= count)

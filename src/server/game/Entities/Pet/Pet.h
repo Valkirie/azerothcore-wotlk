@@ -53,7 +53,6 @@ public:
     void setPetType(PetType type) { m_petType = type; }
     bool isControlled() const { return getPetType() == SUMMON_PET || getPetType() == HUNTER_PET; }
     bool isTemporarySummoned() const { return m_duration > 0ms; }
-
     bool IsPermanentPetFor(Player* owner) const;              // pet have tab in character windows and set UNIT_FIELD_PETNUMBER
 
     bool Create(ObjectGuid::LowType guidlow, Map* map, uint32 phaseMask, uint32 Entry, uint32 pet_number);

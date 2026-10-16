@@ -189,10 +189,11 @@ uint32 Bag::GetItemCount(uint32 item, Item* eItem) const
 {
     Item* pItem;
     uint32 count = 0;
+    uint32 parentEntry = sObjectMgr->GetItemParentEntry(item);
     for (uint32 i = 0; i < GetBagSize(); ++i)
     {
         pItem = m_bagslot[i];
-        if (pItem && pItem != eItem && pItem->GetEntry() == item)
+        if (pItem && pItem != eItem && sObjectMgr->GetItemParentEntry(pItem->GetEntry()) == parentEntry)
             count += pItem->GetCount();
     }
 

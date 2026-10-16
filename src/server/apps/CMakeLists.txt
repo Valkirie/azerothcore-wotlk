@@ -121,6 +121,12 @@ foreach(APPLICATION_NAME ${APPLICATIONS_BUILD_LIST})
   add_executable(${APP_PROJECT_NAME}
     ${APP_PRIVATE_SOURCES})
 
+  if (MSVC)
+    set_target_properties(${APP_PROJECT_NAME}
+      PROPERTIES
+        VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:${APP_PROJECT_NAME}>")
+  endif()
+
   add_dependencies(${APP_PROJECT_NAME} revision.h)
 
   target_link_libraries(${APP_PROJECT_NAME}

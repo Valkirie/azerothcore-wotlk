@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: Rochenoire Zone Scaling
+## Notes: Displays effective level ranges for the current zone and continent maps.
+## Author: AzerothCore / Rochenoire
+## Version: 1.0.0
+## SavedVariables: RochenoireZoneScalingDB
+
+RochenoireZoneScaling.lua
